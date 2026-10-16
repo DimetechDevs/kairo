@@ -194,6 +194,8 @@ class AniListClient {
           description(asHtml: false)
           startDate { year }
           studios(isMain: true) { nodes { name } }
+          externalLinks { site url type language color icon }
+          streamingEpisodes { title thumbnail url site }
           recommendations(perPage: 12, sort: RATING_DESC) {
             nodes { mediaRecommendation { $_cardFields } }
           }

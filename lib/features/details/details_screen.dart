@@ -1,12 +1,17 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../app/router.dart';
 
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
@@ -48,6 +53,15 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     final episodeCount = anime.episodes ?? anime.airedEpisodes;
     final shownEpisodes = _allEpisodes ? episodeCount : episodeCount.clamp(0, _collapsedEpisodes);
     final accent = anime.accent;
+
+    // What the main button plays: an episode in progress, else the next one in the library.
+    final files = {
+      for (final f in ref.watch(libraryProvider))
+        if (f.playable && f.animeId == anime.id) f.episode!: f,
+    };
+    final progress = ref.watch(progressProvider);
+    final resumeEpisode = ref.watch(resumeListProvider).where((r) => r.$1.animeId == anime.id).firstOrNull?.$1.episode;
+    final playEpisode = resumeEpisode ?? (files.keys.where((e) => e > watched).toList()..sort()).firstOrNull;
 
     return Scaffold(
       body: CustomScrollView(
@@ -143,7 +157,17 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: entry == null
+                      child: playEpisode != null
+                          ? FilledButton.icon(
+                              onPressed: () => context.push(Routes.player(anime.id, playEpisode)),
+                              icon: const Icon(Icons.play_arrow_rounded),
+                              label: Text(
+                                resumeEpisode != null ? 'Resume Ep $playEpisode' : 'Play Ep $playEpisode',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )
+                          : entry == null
                           ? FilledButton.icon(
                               onPressed: () =>
                                   ref.read(watchlistProvider.notifier).setStatus(anime, ListStatus.planned),
@@ -210,6 +234,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     child: Text(_expanded ? 'Show less' : 'Read more'),
                   ),
                 ),
+                if (anime.streamingLinks.isNotEmpty) ...[
+                  const SizedBox(height: KairoSpacing.sm),
+                  _WhereToWatch(links: anime.streamingLinks, onOpen: _open),
+                  const SizedBox(height: KairoSpacing.xl),
+                ],
                 if (episodeCount > 0) ...[
                   const SizedBox(height: KairoSpacing.sm),
                   Row(
@@ -237,6 +266,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       aired: !anime.isAiring || ep <= anime.airedEpisodes,
                       onToggle: () =>
                           ref.read(watchlistProvider.notifier).setWatched(anime, ep <= watched ? ep - 1 : ep),
+                      file: files[ep],
+                      streaming: anime.streamingEpisode(ep),
+                      progress: progress[(anime.id, ep)],
+                      onAddFile: () => _addFile(anime, ep),
+                      onAddStream: () => _addStream(anime, ep),
+                      onOpenOfficial: _open,
                     ),
                   if (episodeCount > _collapsedEpisodes)
                     Center(
@@ -266,6 +301,25 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _open(String url) async {
+    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open that link")));
+    }
+  }
+
+  Future<void> _addFile(Anime anime, int episode) async {
+    final doc = await ref.read(documentsProvider).pickVideo();
+    if (doc == null) return;
+    ref.read(libraryProvider.notifier).addFileFor(doc, anime, episode);
+  }
+
+  Future<void> _addStream(Anime anime, int episode) async {
+    final stream = await showStreamUrlDialog(context, subtitle: '${anime.title} · Episode $episode');
+    if (stream == null) return;
+    ref.read(libraryProvider.notifier).addStream(anime: anime, episode: episode, url: stream.url, label: stream.label);
   }
 
   static String _weekday(DateTime t) {
@@ -410,81 +464,177 @@ class _EpisodeRow extends StatelessWidget {
     required this.watched,
     required this.aired,
     required this.onToggle,
+    required this.onAddFile,
+    required this.onAddStream,
+    required this.onOpenOfficial,
+    this.file,
+    this.streaming,
+    this.progress,
   });
 
   final Anime anime;
   final int episode;
   final bool watched;
   final bool aired;
+  final LibraryFile? file;
+  final StreamingEpisode? streaming;
+  final PlaybackProgress? progress;
   final VoidCallback onToggle;
+  final VoidCallback onAddFile;
+  final VoidCallback onAddStream;
+  final ValueChanged<String> onOpenOfficial;
 
   @override
   Widget build(BuildContext context) {
+    final p = progress;
     final (label, color) = switch ((watched, aired)) {
+      _ when file != null && p != null && !p.finished => (
+        '${(p.remaining.inSeconds / 60).ceil()} min left',
+        KairoColors.info,
+      ),
       (true, _) => ('Watched', KairoColors.success),
+      _ when file != null => (file!.isStream ? 'Stream ready' : 'In your library', KairoColors.success),
       (false, true) => (anime.duration != null ? '${anime.duration} min' : 'Aired', KairoColors.textSecondary),
       (false, false) => ('Not aired yet', KairoColors.textMuted),
     };
+    final thumbnail = streaming?.thumbnail;
+    final fraction = file != null && p != null ? (p.finished ? 1.0 : p.fraction) : (watched ? 1.0 : 0.0);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: KairoSpacing.sm),
       child: Material(
         color: KairoColors.surface,
         borderRadius: BorderRadius.circular(KairoRadii.card),
-        child: Padding(
-          padding: const EdgeInsets.all(KairoSpacing.sm),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 96,
-                height: 56,
-                child: Opacity(
-                  opacity: aired ? 1 : 0.4,
-                  child: CoverArt(
-                    anime: anime,
-                    banner: true,
-                    radius: 8,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: 0.35))),
-                        Center(
-                          child: Text('$episode', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                        ),
-                        if (watched)
-                          const Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: SizedBox(height: 3, child: ColoredBox(color: KairoColors.accent)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: file != null ? () => context.push(Routes.player(anime.id, episode)) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(KairoSpacing.sm),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 96,
+                  height: 56,
+                  child: Opacity(
+                    opacity: aired ? 1 : 0.4,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (thumbnail != null)
+                            CachedNetworkImage(
+                              imageUrl: thumbnail,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, _, _) => CoverArt(anime: anime, banner: true, radius: 0),
+                            )
+                          else
+                            CoverArt(anime: anime, banner: true, radius: 0),
+                          ColoredBox(color: Colors.black.withValues(alpha: thumbnail != null ? 0.15 : 0.35)),
+                          Center(
+                            child: file != null
+                                ? const Icon(Icons.play_circle_fill_rounded, size: 28)
+                                : thumbnail == null
+                                ? Text('$episode', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))
+                                : null,
                           ),
-                      ],
+                          if (fraction > 0)
+                            Align(
+                              alignment: Alignment.bottomLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: fraction.clamp(0, 1),
+                                child: const SizedBox(height: 3, child: ColoredBox(color: KairoColors.accent)),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: KairoSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Episode $episode', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Text(label, style: TextStyle(fontSize: 12, color: color)),
+                const SizedBox(width: KairoSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Episode $episode', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                      if (streaming?.name case final name?)
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFFD9D6E8)),
+                        ),
+                      const SizedBox(height: 2),
+                      Text(label, style: TextStyle(fontSize: 12, color: color)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: watched ? 'Mark episode $episode unwatched' : 'Mark watched up to episode $episode',
+                  onPressed: aired ? onToggle : null,
+                  icon: Icon(
+                    watched ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    color: watched ? KairoColors.success : KairoColors.textMuted,
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Episode options',
+                  color: KairoColors.surfaceRaised,
+                  icon: const Icon(Icons.more_vert_rounded, color: KairoColors.textSecondary),
+                  onSelected: (v) => switch (v) {
+                    'file' => onAddFile(),
+                    'stream' => onAddStream(),
+                    _ => onOpenOfficial(v),
+                  },
+                  itemBuilder: (_) => [
+                    if (streaming != null)
+                      PopupMenuItem(
+                        value: streaming!.url,
+                        child: Text('Watch on ${streaming!.site ?? 'official site'}'),
+                      ),
+                    PopupMenuItem(value: 'file', child: Text(file == null ? 'Add video file' : 'Replace video file')),
+                    const PopupMenuItem(value: 'stream', child: Text('Add stream URL')),
                   ],
                 ),
-              ),
-              IconButton(
-                tooltip: watched ? 'Mark episode $episode unwatched' : 'Mark watched up to episode $episode',
-                onPressed: aired ? onToggle : null,
-                icon: Icon(
-                  watched ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                  color: watched ? KairoColors.success : KairoColors.textMuted,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Official streaming services from AniList, opened in their own apps.
+class _WhereToWatch extends StatelessWidget {
+  const _WhereToWatch({required this.links, required this.onOpen});
+
+  final List<ExternalLink> links;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Where to watch', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: KairoSpacing.sm),
+        Wrap(
+          spacing: KairoSpacing.sm,
+          runSpacing: KairoSpacing.sm,
+          children: [
+            for (final l in links)
+              ActionChip(
+                onPressed: () => onOpen(l.url),
+                backgroundColor: KairoColors.surface,
+                side: BorderSide(color: (l.color ?? KairoColors.outline).withValues(alpha: 0.7)),
+                shape: const StadiumBorder(),
+                avatar: Icon(Icons.open_in_new_rounded, size: 16, color: l.color ?? KairoColors.primarySoft),
+                label: Text(l.language == null ? l.site : '${l.site} · ${l.language}'),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

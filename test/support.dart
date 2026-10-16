@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kairo/data/anilist.dart';
+import 'package:kairo/data/local_store.dart';
 import 'package:kairo/data/providers.dart';
 import 'package:kairo/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +62,13 @@ class FakeAniList {
           'studios': {
             'nodes': [{'name': 'Madhouse'}],
           },
+          'externalLinks': [
+            {'site': 'Crunchyroll', 'url': 'https://www.crunchyroll.com/series/x', 'type': 'STREAMING', 'color': '#F88C24'},
+            {'site': 'Official Site', 'url': 'https://example.jp', 'type': 'INFO'},
+          ],
+          'streamingEpisodes': [
+            {'title': 'Episode 1 - The Journey Ends', 'url': 'https://www.crunchyroll.com/watch/1', 'site': 'Crunchyroll'},
+          ],
           'recommendations': {
             'nodes': [{'mediaRecommendation': solo}],
           },
@@ -82,6 +90,7 @@ Future<(ProviderContainer, FakeAniList)> pumpApp(
   WidgetTester tester, {
   Map<String, Object> prefs = const {},
   List<Map<String, dynamic>>? catalogue,
+  LocalStore? store,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
   final sp = await SharedPreferences.getInstance();
@@ -89,6 +98,7 @@ Future<(ProviderContainer, FakeAniList)> pumpApp(
   final container = ProviderContainer(overrides: [
     prefsProvider.overrideWithValue(sp),
     aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
+    localStoreProvider.overrideWithValue(store ?? MemoryStore()),
   ]);
   addTearDown(container.dispose);
   await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const KairoApp()));
