@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Needed for fonts now and AniList later; debug builds get it automatically, release builds do not. -->
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Needed for the AniList catalogue and cover art. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Kairo"
         android:name="${applicationName}"
@@ -42,6 +42,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Opening official streaming services (Crunchyroll, Netflix, ...) from "Where to watch". -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

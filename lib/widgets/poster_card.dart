@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../app/router.dart';
 import '../core/theme.dart';
 import '../data/models.dart';
+import 'common.dart';
 import 'cover_art.dart';
 
 /// 2:3 poster with the title underneath. Opens the details page.
@@ -28,17 +29,44 @@ class PosterCard extends StatelessWidget {
               aspectRatio: 2 / 3,
               child: CoverArt(
                 anime: anime,
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Container(
-                    margin: const EdgeInsets.all(6),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: KairoColors.background.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(6),
+                child: Stack(
+                  children: [
+                    // Darkens the bottom so the badges stay readable on bright covers.
+                    const Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0x99000000)],
+                            stops: [0.6, 1],
+                          ),
+                        ),
+                      ),
                     ),
-                    child: Text(anime.format, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                  ),
+                    Positioned(
+                      left: 6,
+                      top: 6,
+                      child: _Badge(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (anime.isAiring) ...[
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(color: KairoColors.success, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(anime.formatLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (anime.score != null)
+                      Positioned(right: 6, bottom: 6, child: _Badge(child: ScoreLabel(score: anime.score!, size: 11))),
+                  ],
                 ),
               ),
             ),
@@ -51,12 +79,32 @@ class PosterCard extends StatelessWidget {
             ),
             if (showMeta)
               Text(
-                '${anime.year} · ${anime.episodes} eps',
+                [if (anime.year != null) '${anime.year}', anime.episodesLabel].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11, color: KairoColors.textSecondary),
               ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: KairoColors.background.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
     );
   }
 }
@@ -71,36 +119,59 @@ class PosterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        SectionHeader(title, actionLabel: onSeeAll == null ? null : 'See all', onAction: onSeeAll),
+        const SizedBox(height: KairoSpacing.xs),
+        HorizontalStrip(children: [for (final a in items) PosterCard(anime: a, width: 112)]),
+      ],
+    );
+  }
+}
+
+/// Placeholder for a [PosterRow] while it loads.
+class PosterRowSkeleton extends StatelessWidget {
+  const PosterRowSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-          child: Row(
-            children: [
-              Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-              if (onSeeAll != null)
-                TextButton(
-                  onPressed: onSeeAll,
-                  style: TextButton.styleFrom(foregroundColor: KairoColors.info),
-                  child: const Text('See all'),
-                ),
-            ],
-          ),
+          padding: EdgeInsets.symmetric(horizontal: KairoSpacing.gutter, vertical: 14),
+          child: Skeleton(width: 160, height: 18),
         ),
-        const SizedBox(height: KairoSpacing.sm),
-        SizedBox(
-          // 112px-wide 2:3 poster plus two title lines, grown with the system font size.
-          height: 174 + MediaQuery.textScalerOf(context).scale(44),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.md),
-            itemBuilder: (_, i) => PosterCard(anime: items[i], width: 112),
-          ),
+        HorizontalStrip(
+          physics: NeverScrollableScrollPhysics(),
+          children: [PosterSkeleton(width: 112), PosterSkeleton(width: 112), PosterSkeleton(width: 112), PosterSkeleton(width: 112)],
         ),
       ],
+    );
+  }
+}
+
+class PosterSkeleton extends StatelessWidget {
+  const PosterSkeleton({super.key, this.width});
+
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(aspectRatio: 2 / 3, child: Skeleton(radius: KairoRadii.card)),
+          SizedBox(height: 8),
+          Skeleton(height: 12),
+          SizedBox(height: 6),
+          FractionallySizedBox(widthFactor: 0.6, child: Skeleton(height: 12)),
+        ],
+      ),
     );
   }
 }

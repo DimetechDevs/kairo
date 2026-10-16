@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Colour tokens from the Kairo plan. Use these instead of literal colours.
 abstract final class KairoColors {
@@ -13,6 +12,7 @@ abstract final class KairoColors {
   static const accent = Color(0xFFFF6B8A);
   static const info = Color(0xFF38BDF8);
   static const success = Color(0xFF4ADE80);
+  static const star = Color(0xFFFBBF24);
   static const text = Color(0xFFFFFFFF);
   static const textSecondary = Color(0xFFB8B5C9);
   static const textMuted = Color(0xFF8E8AA6);
@@ -39,15 +39,13 @@ abstract final class KairoRadii {
 
 abstract final class KairoTheme {
   static const _displayFamily = 'Dela Gothic One';
+  static const _bodyFamily = 'Zen Kaku Gothic New';
 
   /// Display style for screen titles and the logo.
-  static TextStyle display(BuildContext context, {double size = 26}) {
-    final useGoogle = Theme.of(context).extension<_FontFlag>()?.useGoogleFonts ?? false;
-    final base = TextStyle(fontSize: size, color: KairoColors.text, height: 1.15);
-    return useGoogle ? GoogleFonts.delaGothicOne(textStyle: base) : base.copyWith(fontFamily: _displayFamily);
-  }
+  static TextStyle display(BuildContext context, {double size = 26}) =>
+      TextStyle(fontFamily: _displayFamily, fontSize: size, color: KairoColors.text, height: 1.15);
 
-  static ThemeData dark({bool useGoogleFonts = true}) {
+  static ThemeData dark() {
     final scheme = ColorScheme.fromSeed(
       seedColor: KairoColors.primary,
       brightness: Brightness.dark,
@@ -64,18 +62,24 @@ abstract final class KairoTheme {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      fontFamily: _bodyFamily,
       scaffoldBackgroundColor: KairoColors.background,
-      extensions: [_FontFlag(useGoogleFonts)],
     );
 
-    final textTheme = useGoogleFonts
-        ? GoogleFonts.getTextTheme('Zen Kaku Gothic New', base.textTheme)
-        : base.textTheme;
-
     return base.copyWith(
-      textTheme: textTheme.apply(
+      textTheme: base.textTheme.apply(
         bodyColor: KairoColors.text,
         displayColor: KairoColors.text,
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(color: KairoColors.primarySoft),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: KairoColors.surface,
+        showDragHandle: true,
+        dragHandleColor: KairoColors.outline,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(KairoRadii.hero))),
+      ),
+      menuTheme: const MenuThemeData(
+        style: MenuStyle(backgroundColor: WidgetStatePropertyAll(KairoColors.surfaceRaised)),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: KairoColors.background,
@@ -86,6 +90,7 @@ abstract final class KairoTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: KairoColors.navBar,
         indicatorColor: KairoColors.primary.withValues(alpha: 0.22),
+        height: 68,
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
             color: states.contains(WidgetState.selected) ? KairoColors.primarySoft : KairoColors.textSecondary,
@@ -93,6 +98,7 @@ abstract final class KairoTheme {
         ),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
+            fontFamily: _bodyFamily,
             fontSize: 11,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w400,
             color: states.contains(WidgetState.selected) ? KairoColors.primarySoft : KairoColors.textSecondary,
@@ -105,7 +111,7 @@ abstract final class KairoTheme {
           foregroundColor: KairoColors.text,
           minimumSize: const Size(0, 48),
           shape: const StadiumBorder(),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontFamily: _bodyFamily, fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -118,7 +124,7 @@ abstract final class KairoTheme {
       ),
       snackBarTheme: const SnackBarThemeData(
         backgroundColor: KairoColors.surfaceRaised,
-        contentTextStyle: TextStyle(color: KairoColors.text),
+        contentTextStyle: TextStyle(fontFamily: _bodyFamily, color: KairoColors.text),
         behavior: SnackBarBehavior.floating,
       ),
       switchTheme: SwitchThemeData(
@@ -129,16 +135,4 @@ abstract final class KairoTheme {
       ),
     );
   }
-}
-
-class _FontFlag extends ThemeExtension<_FontFlag> {
-  const _FontFlag(this.useGoogleFonts);
-
-  final bool useGoogleFonts;
-
-  @override
-  _FontFlag copyWith({bool? useGoogleFonts}) => _FontFlag(useGoogleFonts ?? this.useGoogleFonts);
-
-  @override
-  _FontFlag lerp(_FontFlag? other, double t) => other ?? this;
 }

@@ -21,7 +21,7 @@ class _MyAnimeScreenState extends ConsumerState<MyAnimeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = ref.watch(watchlistProvider).values.toList();
+    final entries = ref.watch(sortedWatchlistProvider);
     final visible = entries.where((e) => e.status == _tab).toList();
 
     return SafeArea(
@@ -29,24 +29,24 @@ class _MyAnimeScreenState extends ConsumerState<MyAnimeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ScreenTitle('My Anime'),
-          SizedBox(
-            height: 36,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-              itemCount: ListStatus.values.length,
-              separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.sm),
-              itemBuilder: (_, i) {
-                final s = ListStatus.values[i];
-                return FilterPill(
+          ScreenTitle(
+            'My Anime',
+            trailing: Text(
+              '${entries.length} ${entries.length == 1 ? 'title' : 'titles'}',
+              style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+            ),
+          ),
+          HorizontalStrip(
+            spacing: KairoSpacing.sm,
+            children: [
+              for (final s in ListStatus.values)
+                FilterPill(
                   label: s.label,
                   trailing: '${entries.where((e) => e.status == s).length}',
                   selected: s == _tab,
                   onTap: () => setState(() => _tab = s),
-                );
-              },
-            ),
+                ),
+            ],
           ),
           const SizedBox(height: KairoSpacing.md),
           Expanded(
@@ -64,7 +64,7 @@ class _MyAnimeScreenState extends ConsumerState<MyAnimeScreen> {
                     padding: const EdgeInsets.fromLTRB(KairoSpacing.gutter, 4, KairoSpacing.gutter, KairoSpacing.xxl),
                     itemCount: visible.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) => _ListRow(entry: visible[i]),
+                    itemBuilder: (_, i) => _ListRow(key: ValueKey(visible[i].animeId), entry: visible[i]),
                   ),
           ),
         ],
@@ -74,19 +74,25 @@ class _MyAnimeScreenState extends ConsumerState<MyAnimeScreen> {
 }
 
 class _ListRow extends ConsumerWidget {
-  const _ListRow({required this.entry});
+  const _ListRow({super.key, required this.entry});
 
   final WatchEntry entry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final anime = ref.watch(animeProvider(entry.animeId));
+    final anime = entry.anime;
+    final total = anime.episodes;
     final isWatching = entry.status == ListStatus.watching;
     final label = switch (entry.status) {
-      ListStatus.completed => 'Completed · ${anime.episodes} episodes',
-      ListStatus.watching || ListStatus.paused => 'Ep ${entry.watched} / ${anime.episodes}',
-      _ => '${anime.episodes} episodes',
+      ListStatus.completed => 'Completed · ${anime.episodesLabel}',
+      ListStatus.watching || ListStatus.paused || ListStatus.dropped => 'Ep ${entry.watched} / ${total ?? '?'}',
+      ListStatus.planned => [
+        anime.formatLabel,
+        anime.episodesLabel,
+        if (anime.year != null) '${anime.year}',
+      ].join(' · '),
     };
+    final progressBase = total ?? (anime.airedEpisodes > 0 ? anime.airedEpisodes : null);
 
     return Material(
       color: KairoColors.surface,
@@ -98,21 +104,45 @@ class _ListRow extends ConsumerWidget {
           padding: const EdgeInsets.all(10),
           child: Row(
             children: [
-              SizedBox(width: 56, height: 80, child: CoverArt(anime: anime, radius: 8)),
+              SizedBox(width: 60, height: 86, child: CoverArt(anime: anime, radius: 8)),
               const SizedBox(width: KairoSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(anime.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.25)),
+                    Text(
+                      anime.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.25),
+                    ),
                     const SizedBox(height: 4),
-                    Text(label, style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary)),
-                    const SizedBox(height: 6),
-                    ProgressLine(value: entry.watched / anime.episodes),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                          ),
+                        ),
+                        if (anime.score != null) ...[
+                          const SizedBox(width: 8),
+                          ScoreLabel(score: anime.score!, size: 12),
+                        ],
+                      ],
+                    ),
+                    if (anime.nextAiring != null && entry.status != ListStatus.completed)
+                      Text(anime.nextAiring!.label(), style: const TextStyle(fontSize: 12, color: KairoColors.success)),
+                    if (entry.status != ListStatus.planned && progressBase != null) ...[
+                      const SizedBox(height: 6),
+                      ProgressLine(value: entry.watched / progressBase, color: anime.accent),
+                    ],
                   ],
                 ),
               ),
-              if (isWatching && entry.watched < anime.episodes) ...[
+              if (isWatching && (total == null || entry.watched < total)) ...[
                 const SizedBox(width: KairoSpacing.sm),
                 Tooltip(
                   message: 'Mark episode ${entry.watched + 1} watched',
