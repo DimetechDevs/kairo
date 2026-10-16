@@ -26,6 +26,8 @@ class Anime {
     this.studios = const [],
     this.nextAiring,
     this.recommendations = const [],
+    this.externalLinks = const [],
+    this.streamingEpisodes = const [],
   });
 
   final int id;
@@ -64,6 +66,23 @@ class Anime {
 
   /// Only filled in by the details query.
   final List<Anime> recommendations;
+
+  /// Official places to watch or read about it (details query only).
+  final List<ExternalLink> externalLinks;
+
+  /// Per-episode links on official streaming services (details query only).
+  final List<StreamingEpisode> streamingEpisodes;
+
+  List<ExternalLink> get streamingLinks => [for (final l in externalLinks) if (l.type == 'STREAMING') l];
+
+  /// The official stream for an episode, matched by the number in its title (falls back to list order).
+  StreamingEpisode? streamingEpisode(int episode) {
+    for (final e in streamingEpisodes) {
+      if (e.number == episode) return e;
+    }
+    final numbered = streamingEpisodes.any((e) => e.number != null);
+    return !numbered && episode <= streamingEpisodes.length ? streamingEpisodes[episode - 1] : null;
+  }
 
   String get shortTitle => title;
 
@@ -154,6 +173,23 @@ class Anime {
         for (final r in recs)
           if ((r as Map<String, dynamic>)['mediaRecommendation'] case final Map<String, dynamic> media)
             Anime.fromAniList(media),
+      ],
+      externalLinks: [
+        for (final l in m['externalLinks'] as List? ?? const [])
+          if (l case {'site': final String site, 'url': final String url})
+            ExternalLink(
+              site: site,
+              url: url,
+              type: l['type'] as String?,
+              language: l['language'] as String?,
+              color: _parseColor(l['color'] as String?),
+              icon: l['icon'] as String?,
+            ),
+      ],
+      streamingEpisodes: [
+        for (final e in m['streamingEpisodes'] as List? ?? const [])
+          if (e case {'title': final String title, 'url': final String url})
+            StreamingEpisode(title: title, url: url, site: e['site'] as String?, thumbnail: e['thumbnail'] as String?),
       ],
     );
   }
@@ -271,49 +307,133 @@ class WatchEntry {
       );
 }
 
+/// An official link from AniList, e.g. Crunchyroll or Netflix.
+class ExternalLink {
+  const ExternalLink({required this.site, required this.url, this.type, this.language, this.color, this.icon});
+
+  final String site;
+  final String url;
+
+  /// `STREAMING`, `INFO` or `SOCIAL`.
+  final String? type;
+  final String? language;
+  final Color? color;
+  final String? icon;
+}
+
+/// An episode on an official streaming service, as listed by AniList.
+class StreamingEpisode {
+  const StreamingEpisode({required this.title, required this.url, this.site, this.thumbnail});
+
+  /// Usually "Episode 3 - Title".
+  final String title;
+  final String url;
+  final String? site;
+  final String? thumbnail;
+
+  static final _number = RegExp(r'^(?:Episode|Ep\.?)\s*(\d+)', caseSensitive: false);
+
+  int? get number => int.tryParse(_number.firstMatch(title)?.group(1) ?? '');
+
+  /// The title without the "Episode 3 - " prefix, if there is one.
+  String? get name {
+    final m = RegExp(r'^(?:Episode|Ep\.?)\s*\d+\s*[-–:]\s*(.+)$', caseSensitive: false).firstMatch(title);
+    return m?.group(1)?.trim();
+  }
+}
+
 enum FileState { matched, unmatched, missing }
 
-/// A video the user imported from their phone.
+/// A video the user added: a file on the phone (`content://`) or a stream URL they entered.
 class LibraryFile {
   const LibraryFile({
     required this.id,
+    required this.uri,
     required this.fileName,
-    required this.sizeLabel,
     required this.state,
-    this.animeId,
+    required this.addedAt,
+    this.sizeBytes,
+    this.anime,
     this.episode,
-    this.suggestedAnimeId,
+    this.suggestedAnime,
     this.suggestedEpisode,
   });
 
   final String id;
+
+  /// `content://` for files picked on the phone, `http(s)://` for streams.
+  final String uri;
   final String fileName;
-  final String sizeLabel;
+  final int? sizeBytes;
   final FileState state;
-  final int? animeId;
+  final DateTime addedAt;
+
+  /// The title it is matched to (a saved copy, so the Library works offline).
+  final Anime? anime;
   final int? episode;
-  final int? suggestedAnimeId;
+  final Anime? suggestedAnime;
   final int? suggestedEpisode;
 
-  LibraryFile matchTo(int animeId, int episode) => LibraryFile(
+  int? get animeId => anime?.id;
+  bool get isStream => uri.startsWith('http://') || uri.startsWith('https://');
+  bool get playable => state == FileState.matched && anime != null && episode != null;
+
+  String get sizeLabel {
+    if (isStream) return Uri.tryParse(uri)?.host ?? 'Stream';
+    final b = sizeBytes;
+    if (b == null) return '';
+    if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)} GB';
+    if (b >= 1 << 20) return '${(b / (1 << 20)).round()} MB';
+    return '${(b / 1024).round()} KB';
+  }
+
+  LibraryFile copyWith({
+    String? uri,
+    String? fileName,
+    int? sizeBytes,
+    FileState? state,
+    Anime? anime,
+    int? episode,
+    Anime? suggestedAnime,
+    int? suggestedEpisode,
+    bool clearSuggestion = false,
+  }) =>
+      LibraryFile(
         id: id,
-        fileName: fileName,
-        sizeLabel: sizeLabel,
-        state: FileState.matched,
-        animeId: animeId,
-        episode: episode,
+        uri: uri ?? this.uri,
+        fileName: fileName ?? this.fileName,
+        sizeBytes: sizeBytes ?? this.sizeBytes,
+        state: state ?? this.state,
+        addedAt: addedAt,
+        anime: anime ?? this.anime,
+        episode: episode ?? this.episode,
+        suggestedAnime: clearSuggestion ? null : (suggestedAnime ?? this.suggestedAnime),
+        suggestedEpisode: clearSuggestion ? null : (suggestedEpisode ?? this.suggestedEpisode),
       );
+
+  LibraryFile matchTo(Anime anime, int episode) =>
+      copyWith(anime: anime, episode: episode, state: FileState.matched, clearSuggestion: true);
 }
 
-/// Where the user stopped in an episode.
+/// Where playback stopped in an episode.
 class PlaybackProgress {
-  const PlaybackProgress({required this.animeId, required this.episode, required this.position, required this.duration});
+  const PlaybackProgress({
+    required this.animeId,
+    required this.episode,
+    required this.position,
+    required this.duration,
+    required this.updatedAt,
+  });
 
   final int animeId;
   final int episode;
   final Duration position;
   final Duration duration;
+  final DateTime updatedAt;
 
   double get fraction => duration.inMilliseconds == 0 ? 0 : position.inMilliseconds / duration.inMilliseconds;
   Duration get remaining => duration - position;
+
+  /// Counted as watched from 90% on (credits are usually the last 10%).
+  bool get finished => fraction >= 0.9;
 }

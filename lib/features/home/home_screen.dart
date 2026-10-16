@@ -24,7 +24,12 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feed = ref.watch(homeFeedProvider);
-    final watching = ref.watch(sortedWatchlistProvider).where((e) => e.status == ListStatus.watching).toList();
+    final resume = ref.watch(resumeListProvider);
+    final resuming = {for (final (p, _) in resume) p.animeId};
+    final watching = ref
+        .watch(sortedWatchlistProvider)
+        .where((e) => e.status == ListStatus.watching && !resuming.contains(e.animeId))
+        .toList();
 
     return SafeArea(
       bottom: false,
@@ -72,7 +77,7 @@ class HomeScreen extends ConsumerWidget {
                 child: Skeleton(height: _heroHeight(context), radius: KairoRadii.hero),
               ),
             },
-            if (watching.isNotEmpty) ...[
+            if (resume.isNotEmpty || watching.isNotEmpty) ...[
               const SizedBox(height: KairoSpacing.xl),
               SectionHeader(
                 'Continue watching',
@@ -80,7 +85,12 @@ class HomeScreen extends ConsumerWidget {
                 onAction: () => StatefulNavigationShell.of(context).goBranch(2),
               ),
               const SizedBox(height: KairoSpacing.xs),
-              HorizontalStrip(children: [for (final e in watching) _ContinueCard(entry: e)]),
+              HorizontalStrip(
+                children: [
+                  for (final (p, f) in resume) _ResumeCard(progress: p, file: f),
+                  for (final e in watching) _ContinueCard(entry: e),
+                ],
+              ),
             ],
             const SizedBox(height: KairoSpacing.lg),
             if (feed.value case final value?) ...[
@@ -404,3 +414,70 @@ class _ContinueCard extends ConsumerWidget {
 
 /// The hero card's height: artwork space plus room for its text and buttons at the user's font size.
 double _heroHeight(BuildContext context) => 150 + MediaQuery.textScalerOf(context).scale(170);
+
+/// An episode stopped part-way; tapping it resumes playback.
+class _ResumeCard extends ConsumerWidget {
+  const _ResumeCard({required this.progress, required this.file});
+
+  final PlaybackProgress progress;
+  final LibraryFile file;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final anime = ref.watch(animeProvider(progress.animeId)) ?? file.anime!;
+    final minutesLeft = (progress.remaining.inSeconds / 60).ceil();
+    return SizedBox(
+      width: 220,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(KairoRadii.panel),
+        onTap: () => context.push(Routes.player(anime.id, progress.episode)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 124,
+              child: CoverArt(
+                anime: anime,
+                banner: true,
+                radius: KairoRadii.panel,
+                child: Stack(
+                  children: [
+                    Center(
+                      child: CircleAvatar(
+                        radius: 22,
+                        backgroundColor: KairoColors.background.withValues(alpha: 0.6),
+                        child: const Icon(Icons.play_arrow_rounded, color: KairoColors.text),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: progress.fraction,
+                        minHeight: 4,
+                        color: KairoColors.accent,
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: KairoSpacing.sm),
+            Text(
+              anime.shortTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              'Ep ${progress.episode} · $minutesLeft min left',
+              style: const TextStyle(fontSize: 12, color: KairoColors.info),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

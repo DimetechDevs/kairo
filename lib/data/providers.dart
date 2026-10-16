@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'anilist.dart';
+import 'documents.dart';
+import 'filename_parser.dart';
+import 'local_store.dart';
 import 'models.dart';
 
 /// Opened in `main()` before the app starts and passed in as an override.
@@ -109,23 +112,167 @@ final sortedWatchlistProvider = Provider<List<WatchEntry>>((ref) {
   return ref.watch(watchlistProvider).values.toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 });
 
-/// Imported videos. Empty until the file import step lands.
+final localStoreProvider = Provider<LocalStore>((ref) => MemoryStore()); // Replaced by SqliteStore in main().
+
+final documentsProvider = Provider<Documents>((ref) => const Documents());
+
+/// Videos the user imported from the phone, plus stream URLs they added.
 class LibraryNotifier extends Notifier<List<LibraryFile>> {
   @override
-  List<LibraryFile> build() => const [];
+  List<LibraryFile> build() => [...ref.watch(localStoreProvider).files]..sort((a, b) => a.addedAt.compareTo(b.addedAt));
+
+  LocalStore get _store => ref.read(localStoreProvider);
+
+  void _put(LibraryFile file) {
+    state = [for (final f in state) if (f.id != file.id) f, file];
+    _store.putFile(file);
+  }
+
+  LibraryFile? fileFor(int animeId, int episode) =>
+      state.where((f) => f.playable && f.animeId == animeId && f.episode == episode).firstOrNull;
+
+  /// Adds picked videos, then guesses which show and episode each one is.
+  Future<void> importPicked(List<PickedDocument> picked) async {
+    final now = DateTime.now();
+    final known = {for (final f in state) f.uri};
+    final added = <LibraryFile>[];
+    for (final (i, doc) in picked.indexed) {
+      if (known.contains(doc.uri)) continue;
+      final file = LibraryFile(
+        id: doc.uri,
+        uri: doc.uri,
+        fileName: doc.name,
+        sizeBytes: doc.size,
+        state: FileState.unmatched,
+        addedAt: now.add(Duration(milliseconds: i)),
+      );
+      added.add(file);
+      _put(file);
+    }
+    await _suggestMatches(added);
+  }
+
+  /// One AniList search per distinct title guess (a season folder is usually one show).
+  Future<void> _suggestMatches(List<LibraryFile> files) async {
+    final client = ref.read(aniListProvider);
+    final byTitle = <String, Anime?>{};
+    for (final file in files) {
+      final guess = parseVideoName(file.fileName);
+      if (guess.title.isEmpty) continue;
+      if (!byTitle.containsKey(guess.title)) {
+        try {
+          byTitle[guess.title] = (await client.browse(search: guess.title, perPage: 1)).items.firstOrNull;
+        } catch (_) {
+          byTitle[guess.title] = null; // Offline or no match: the user can choose by hand.
+        }
+      }
+      final anime = byTitle[guess.title];
+      final current = state.where((f) => f.id == file.id).firstOrNull;
+      if (anime == null || current == null || current.state != FileState.unmatched) continue;
+      _put(current.copyWith(suggestedAnime: anime, suggestedEpisode: guess.episode ?? 1));
+    }
+  }
 
   void confirmSuggestedMatch(String fileId) {
-    state = [
-      for (final f in state)
-        if (f.id == fileId && f.suggestedAnimeId != null && f.suggestedEpisode != null)
-          f.matchTo(f.suggestedAnimeId!, f.suggestedEpisode!)
-        else
-          f,
-    ];
+    final file = state.where((f) => f.id == fileId).firstOrNull;
+    if (file?.suggestedAnime == null) return;
+    _put(file!.matchTo(file.suggestedAnime!, file.suggestedEpisode ?? 1));
+  }
+
+  void matchTo(String fileId, Anime anime, int episode) {
+    final file = state.where((f) => f.id == fileId).firstOrNull;
+    if (file == null) return;
+    _put(file.matchTo(anime, episode));
+  }
+
+  /// Adds a picked file straight to a known episode (from the details page).
+  void addFileFor(PickedDocument doc, Anime anime, int episode) {
+    final existing = state.where((f) => f.uri == doc.uri).firstOrNull;
+    _put((existing ??
+            LibraryFile(
+              id: doc.uri,
+              uri: doc.uri,
+              fileName: doc.name,
+              sizeBytes: doc.size,
+              state: FileState.matched,
+              addedAt: DateTime.now(),
+            ))
+        .matchTo(anime, episode));
+  }
+
+  /// Adds a stream URL the user supplied (their own server, a direct HLS/MP4 link) for one episode.
+  void addStream({required Anime anime, required int episode, required String url, String? label}) {
+    final now = DateTime.now();
+    _put(LibraryFile(
+      id: 'stream:${anime.id}:$episode:${now.microsecondsSinceEpoch}',
+      uri: url.trim(),
+      fileName: label?.trim().isNotEmpty == true ? label!.trim() : 'Stream · Episode $episode',
+      state: FileState.matched,
+      addedAt: now,
+      anime: anime,
+      episode: episode,
+    ));
+  }
+
+  /// Points a missing entry at a new copy of the file.
+  void relink(String fileId, PickedDocument doc) {
+    final file = state.where((f) => f.id == fileId).firstOrNull;
+    if (file == null) return;
+    ref.read(documentsProvider).release(file.uri).ignore();
+    _put(file.copyWith(uri: doc.uri, fileName: doc.name, sizeBytes: doc.size, state: file.anime != null ? FileState.matched : FileState.unmatched));
+  }
+
+  void remove(String fileId) {
+    final file = state.where((f) => f.id == fileId).firstOrNull;
+    if (file == null) return;
+    state = [for (final f in state) if (f.id != fileId) f];
+    _store.deleteFile(fileId);
+    if (!file.isStream) ref.read(documentsProvider).release(file.uri).ignore();
+  }
+
+  /// Marks files that were moved or deleted outside Kairo (and un-marks ones that came back).
+  Future<void> checkMissing() async {
+    final docs = ref.read(documentsProvider);
+    for (final file in [...state]) {
+      if (file.isStream) continue;
+      final exists = await docs.exists(file.uri);
+      if (!exists && file.state != FileState.missing) {
+        _put(file.copyWith(state: FileState.missing));
+      } else if (exists && file.state == FileState.missing) {
+        _put(file.copyWith(state: file.anime != null ? FileState.matched : FileState.unmatched));
+      }
+    }
   }
 }
 
 final libraryProvider = NotifierProvider<LibraryNotifier, List<LibraryFile>>(LibraryNotifier.new);
 
-/// Where playback stopped per episode. Empty until real playback lands.
-final progressProvider = Provider<List<PlaybackProgress>>((ref) => const []);
+/// Where playback stopped, per (anime, episode).
+class ProgressNotifier extends Notifier<Map<(int, int), PlaybackProgress>> {
+  @override
+  Map<(int, int), PlaybackProgress> build() => {for (final p in ref.watch(localStoreProvider).progress) (p.animeId, p.episode): p};
+
+  void save(int animeId, int episode, Duration position, Duration duration) {
+    if (duration <= Duration.zero) return;
+    final p = PlaybackProgress(animeId: animeId, episode: episode, position: position, duration: duration, updatedAt: DateTime.now());
+    state = {...state, (animeId, episode): p};
+    ref.read(localStoreProvider).putProgress(p);
+  }
+}
+
+final progressProvider = NotifierProvider<ProgressNotifier, Map<(int, int), PlaybackProgress>>(ProgressNotifier.new);
+
+/// Episodes started but not finished that can still be played, most recent first, one per title.
+final resumeListProvider = Provider<List<(PlaybackProgress, LibraryFile)>>((ref) {
+  final files = ref.watch(libraryProvider);
+  final seen = <int>{};
+  final result = <(PlaybackProgress, LibraryFile)>[];
+  final progress = ref.watch(progressProvider).values.where((p) => !p.finished && p.position > const Duration(seconds: 30)).toList()
+    ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  for (final p in progress) {
+    if (!seen.add(p.animeId)) continue;
+    final file = files.where((f) => f.playable && f.animeId == p.animeId && f.episode == p.episode).firstOrNull;
+    if (file != null) result.add((p, file));
+  }
+  return result;
+});
