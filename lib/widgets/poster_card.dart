@@ -109,9 +109,6 @@ class _Badge extends StatelessWidget {
   }
 }
 
-/// Height of a [PosterRow]'s list: a 112px-wide 2:3 poster plus two title lines, grown with the system font size.
-double _posterRowHeight(BuildContext context) => 174 + MediaQuery.textScalerOf(context).scale(44);
-
 /// A horizontal row of posters with a header.
 class PosterRow extends StatelessWidget {
   const PosterRow({super.key, required this.title, required this.items, this.onSeeAll});
@@ -128,16 +125,7 @@ class PosterRow extends StatelessWidget {
       children: [
         SectionHeader(title, actionLabel: onSeeAll == null ? null : 'See all', onAction: onSeeAll),
         const SizedBox(height: KairoSpacing.xs),
-        SizedBox(
-          height: _posterRowHeight(context),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.md),
-            itemBuilder: (_, i) => PosterCard(anime: items[i], width: 112),
-          ),
-        ),
+        HorizontalStrip(children: [for (final a in items) PosterCard(anime: a, width: 112)]),
       ],
     );
   }
@@ -149,23 +137,16 @@ class PosterRowSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(horizontal: KairoSpacing.gutter, vertical: 14),
           child: Skeleton(width: 160, height: 18),
         ),
-        SizedBox(
-          height: _posterRowHeight(context),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-            itemCount: 4,
-            separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.md),
-            itemBuilder: (_, _) => const PosterSkeleton(width: 112),
-          ),
+        HorizontalStrip(
+          physics: NeverScrollableScrollPhysics(),
+          children: [PosterSkeleton(width: 112), PosterSkeleton(width: 112), PosterSkeleton(width: 112), PosterSkeleton(width: 112)],
         ),
       ],
     );

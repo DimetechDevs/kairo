@@ -51,24 +51,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           CircleAvatar(
                             radius: 26,
                             backgroundColor: KairoColors.primary,
-                            child: Text('G', style: TextStyle(color: KairoColors.text, fontSize: 20, fontWeight: FontWeight.w700)),
+                            child: Text(
+                              'G',
+                              style: TextStyle(color: KairoColors.text, fontSize: 20, fontWeight: FontWeight.w700),
+                            ),
                           ),
                           SizedBox(width: 14),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Guest', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                              Text('Your list is saved on this phone', style: TextStyle(fontSize: 13, color: KairoColors.textSecondary)),
-                            ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Guest', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                                Text(
+                                  'Your list is saved on this phone',
+                                  style: TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
                       FilledButton(
-                        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Accounts and sync come in phase 2.')),
+                        onPressed: () =>
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(const SnackBar(content: Text('Accounts and sync come in phase 2.'))),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: KairoColors.text,
+                          foregroundColor: KairoColors.background,
                         ),
-                        style: FilledButton.styleFrom(backgroundColor: KairoColors.text, foregroundColor: KairoColors.background),
                         child: const Text('Sign in to back up and sync'),
                       ),
                     ],
@@ -77,40 +88,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: KairoSpacing.xl),
                 Row(
                   children: [
-                    Expanded(child: _StatTile(value: '$episodes', label: 'Episodes', color: KairoColors.primarySoft)),
+                    Expanded(
+                      child: _StatTile(value: '$episodes', label: 'Episodes', color: KairoColors.primarySoft),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _StatTile(value: '${(minutes / 60).round()} h', label: 'Watched', color: KairoColors.accent)),
+                    Expanded(
+                      child: _StatTile(
+                        value: '${(minutes / 60).round()} h',
+                        label: 'Watched',
+                        color: KairoColors.accent,
+                      ),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _StatTile(value: '$completed', label: 'Completed', color: KairoColors.success)),
+                    Expanded(
+                      child: _StatTile(value: '$completed', label: 'Completed', color: KairoColors.success),
+                    ),
                   ],
                 ),
                 const SizedBox(height: KairoSpacing.xl),
                 const _GroupLabel('Player defaults'),
-                const _SettingsGroup(children: [
-                  _ValueRow(label: 'Playback speed', value: '1.0×'),
-                  _ValueRow(label: 'Subtitle language', value: 'English'),
-                  _ValueRow(label: 'Count as watched at', value: '90%'),
-                ]),
+                const _SettingsGroup(
+                  children: [
+                    _ValueRow(label: 'Playback speed', value: '1.0×'),
+                    _ValueRow(label: 'Subtitle language', value: 'English'),
+                    _ValueRow(label: 'Count as watched at', value: '90%'),
+                  ],
+                ),
                 const SizedBox(height: KairoSpacing.xl),
                 const _GroupLabel('Playback'),
-                _SettingsGroup(children: [
-                  SwitchListTile(
-                    title: const Text('Play next episode automatically', style: TextStyle(fontSize: 14)),
-                    value: _autoNext,
-                    onChanged: (v) => setState(() => _autoNext = v),
-                  ),
-                  SwitchListTile(
-                    title: const Text('Show Skip intro button', style: TextStyle(fontSize: 14)),
-                    value: _skipIntro,
-                    onChanged: (v) => setState(() => _skipIntro = v),
-                  ),
-                ]),
+                _SettingsGroup(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Play next episode automatically', style: TextStyle(fontSize: 14)),
+                      value: _autoNext,
+                      onChanged: (v) => setState(() => _autoNext = v),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Show Skip intro button', style: TextStyle(fontSize: 14)),
+                      value: _skipIntro,
+                      onChanged: (v) => setState(() => _skipIntro = v),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: KairoSpacing.xl),
                 const _GroupLabel('Storage and sync'),
-                _SettingsGroup(children: [
-                  _ValueRow(label: 'Imported videos', value: '$files files'),
-                  const _ValueRow(label: 'Cloud sync', value: 'Off · Guest'),
-                ]),
+                _SettingsGroup(
+                  children: [
+                    _ValueRow(label: 'Imported videos', value: '$files files'),
+                    const _ValueRow(label: 'Cloud sync', value: 'Off · Guest'),
+                  ],
+                ),
                 const SizedBox(height: KairoSpacing.xl),
                 const Text(
                   'Anime information from AniList',
@@ -143,7 +170,12 @@ class _StatTile extends StatelessWidget {
         children: [
           Text(
             value,
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color, fontFeatures: const [FontFeature.tabularFigures()]),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: color,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
           Text(label, style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary)),
         ],
@@ -163,7 +195,12 @@ class _GroupLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: KairoSpacing.sm),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: KairoColors.textSecondary),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+          color: KairoColors.textSecondary,
+        ),
       ),
     );
   }
@@ -200,17 +237,29 @@ class _ValueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(label, style: const TextStyle(fontSize: 14)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(value, style: const TextStyle(fontSize: 14, color: KairoColors.textSecondary)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: KairoColors.textSecondary),
-        ],
-      ),
+    return InkWell(
       onTap: () {},
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.lg, vertical: KairoSpacing.sm),
+          child: Row(
+            children: [
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+              const SizedBox(width: KairoSpacing.sm),
+              Flexible(
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(fontSize: 14, color: KairoColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, size: 18, color: KairoColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

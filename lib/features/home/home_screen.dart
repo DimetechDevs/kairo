@@ -39,10 +39,15 @@ class HomeScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text.rich(
-                      const TextSpan(children: [
-                        TextSpan(text: 'Kai'),
-                        TextSpan(text: 'ro', style: TextStyle(color: KairoColors.primary)),
-                      ]),
+                      const TextSpan(
+                        children: [
+                          TextSpan(text: 'Kai'),
+                          TextSpan(
+                            text: 'ro',
+                            style: TextStyle(color: KairoColors.primary),
+                          ),
+                        ],
+                      ),
                       style: KairoTheme.display(context),
                       semanticsLabel: 'Kairo',
                     ),
@@ -59,13 +64,13 @@ class HomeScreen extends ConsumerWidget {
             switch (feed) {
               AsyncValue(:final value?) => _FeaturedCarousel(items: value.trending.take(6).toList()),
               AsyncValue(:final error?) => SizedBox(
-                  height: 300,
-                  child: ErrorState(error: error, onRetry: () => ref.invalidate(homeFeedProvider)),
-                ),
-              _ => const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-                  child: Skeleton(height: 320, radius: KairoRadii.hero),
-                ),
+                height: 300,
+                child: ErrorState(error: error, onRetry: () => ref.invalidate(homeFeedProvider)),
+              ),
+              _ => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
+                child: Skeleton(height: _heroHeight(context), radius: KairoRadii.hero),
+              ),
             },
             if (watching.isNotEmpty) ...[
               const SizedBox(height: KairoSpacing.xl),
@@ -75,17 +80,7 @@ class HomeScreen extends ConsumerWidget {
                 onAction: () => StatefulNavigationShell.of(context).goBranch(2),
               ),
               const SizedBox(height: KairoSpacing.xs),
-              SizedBox(
-                // Card art plus three text lines, grown with the system font size.
-                height: 124 + MediaQuery.textScalerOf(context).scale(66),
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-                  itemCount: watching.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.md),
-                  itemBuilder: (_, i) => _ContinueCard(entry: watching[i]),
-                ),
-              ),
+              HorizontalStrip(children: [for (final e in watching) _ContinueCard(entry: e)]),
             ],
             const SizedBox(height: KairoSpacing.lg),
             if (feed.value case final value?) ...[
@@ -167,7 +162,7 @@ class _FeaturedCarouselState extends State<_FeaturedCarousel> {
     return Column(
       children: [
         SizedBox(
-          height: 320,
+          height: _heroHeight(context),
           child: NotificationListener<ScrollStartNotification>(
             // Pause the auto-advance while the user is swiping.
             onNotification: (n) {
@@ -237,78 +232,86 @@ class _FeaturedCard extends ConsumerWidget {
               stops: const [0.15, 0.62, 1],
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(KairoSpacing.lg),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: KairoColors.accent, borderRadius: BorderRadius.circular(10)),
-                      child: const Text(
-                        'TRENDING',
-                        style: TextStyle(color: KairoColors.background, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2),
-                      ),
-                    ),
-                    if (anime.score != null) ...[const SizedBox(width: KairoSpacing.sm), ScoreLabel(score: anime.score!)],
-                    if (anime.nextAiring != null) ...[
-                      const SizedBox(width: KairoSpacing.sm),
-                      Flexible(
-                        child: Text(
-                          anime.nextAiring!.label(),
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: KairoColors.success, fontWeight: FontWeight.w700),
+          // Anchored to the bottom; at very large text sizes the top (artwork) is what gets cut off.
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            reverse: true,
+            child: Padding(
+              padding: const EdgeInsets.all(KairoSpacing.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: KairoSpacing.sm,
+                    runSpacing: KairoSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: KairoColors.accent, borderRadius: BorderRadius.circular(10)),
+                        child: const Text(
+                          'TRENDING',
+                          style: TextStyle(
+                            color: KairoColors.background,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
                         ),
                       ),
+                      if (anime.score != null) ScoreLabel(score: anime.score!),
+                      if (anime.nextAiring != null)
+                        Text(
+                          anime.nextAiring!.label(),
+                          style: const TextStyle(fontSize: 12, color: KairoColors.success, fontWeight: FontWeight.w700),
+                        ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: KairoSpacing.sm),
-                Text(
-                  anime.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.15),
-                ),
-                const SizedBox(height: KairoSpacing.xs),
-                Text(
-                  meta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFFD9D6E8)),
-                ),
-                const SizedBox(height: KairoSpacing.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: entry == null
-                            ? () {
-                                ref.read(watchlistProvider.notifier).setStatus(anime, ListStatus.planned);
-                                ScaffoldMessenger.of(context)
-                                  ..hideCurrentSnackBar()
-                                  ..showSnackBar(SnackBar(content: Text('Added ${anime.title} to Planned')));
-                              }
-                            : () => context.push(Routes.anime(anime.id)),
-                        icon: Icon(entry == null ? Icons.add_rounded : Icons.bookmark_rounded),
-                        label: Text(entry == null ? 'Add to list' : entry.status.label),
+                  ),
+                  const SizedBox(height: KairoSpacing.sm),
+                  Text(
+                    anime.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.15),
+                  ),
+                  const SizedBox(height: KairoSpacing.xs),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFFD9D6E8)),
+                  ),
+                  const SizedBox(height: KairoSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: entry == null
+                              ? () {
+                                  ref.read(watchlistProvider.notifier).setStatus(anime, ListStatus.planned);
+                                  ScaffoldMessenger.of(context)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(SnackBar(content: Text('Added ${anime.title} to Planned')));
+                                }
+                              : () => context.push(Routes.anime(anime.id)),
+                          icon: Icon(entry == null ? Icons.add_rounded : Icons.bookmark_rounded),
+                          label: Text(entry == null ? 'Add to list' : entry.status.label),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: KairoSpacing.sm),
-                    OutlinedButton(
-                      onPressed: () => context.push(Routes.anime(anime.id)),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 48),
-                        backgroundColor: KairoColors.background.withValues(alpha: 0.35),
+                      const SizedBox(width: KairoSpacing.sm),
+                      OutlinedButton(
+                        onPressed: () => context.push(Routes.anime(anime.id)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          backgroundColor: KairoColors.background.withValues(alpha: 0.35),
+                        ),
+                        child: const Text('Details'),
                       ),
-                      child: const Text('Details'),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -380,7 +383,12 @@ class _ContinueCard extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: KairoSpacing.sm),
-            Text(anime.shortTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            Text(
+              anime.shortTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
             Text(
               'Ep ${entry.watched} / ${total ?? '?'}',
               style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
@@ -393,3 +401,6 @@ class _ContinueCard extends ConsumerWidget {
     );
   }
 }
+
+/// The hero card's height: artwork space plus room for its text and buttons at the user's font size.
+double _heroHeight(BuildContext context) => 150 + MediaQuery.textScalerOf(context).scale(170);

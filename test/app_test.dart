@@ -3,95 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:kairo/data/anilist.dart';
 import 'package:kairo/data/models.dart';
 import 'package:kairo/data/providers.dart';
-import 'package:kairo/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// An AniList `Media` object. No artwork URLs, so tests never touch the network.
-Map<String, dynamic> media(int id, String title, {int? episodes = 12, List<String> genres = const ['Action'], int? next}) => {
-      'id': id,
-      'title': {'english': title, 'romaji': '$title (romaji)', 'native': null},
-      'coverImage': {'extraLarge': null, 'color': '#e4a128'},
-      'bannerImage': null,
-      'format': 'TV',
-      'status': next == null ? 'FINISHED' : 'RELEASING',
-      'episodes': episodes,
-      'duration': 24,
-      'season': 'FALL',
-      'seasonYear': 2026,
-      'averageScore': 85,
-      'popularity': 1000,
-      'genres': genres,
-      'nextAiringEpisode': next == null ? null : {'episode': next, 'airingAt': 1893456000},
-    };
-
-final _frieren = media(1, 'Frieren', episodes: 28, genres: ['Adventure', 'Fantasy']);
-final _dandadan = media(2, 'Dandadan', episodes: null, next: 4);
-final _solo = media(3, 'Solo Leveling');
-
-/// Answers like AniList, and records the variables of each request.
-class FakeAniList {
-  final requests = <Map<String, dynamic>>[];
-  bool offline = false;
-
-  late final client = MockClient((req) async {
-    if (offline) throw http.ClientException('offline');
-    final body = jsonDecode(req.body) as Map<String, dynamic>;
-    final query = body['query'] as String;
-    final vars = body['variables'] as Map<String, dynamic>;
-    requests.add(vars);
-
-    Map<String, dynamic> data;
-    if (query.contains('trending: Page')) {
-      final page = {'media': [_frieren, _dandadan, _solo]};
-      data = {'trending': page, 'season': page, 'popular': page, 'topRated': page};
-    } else if (query.contains('Media(id')) {
-      final m = [_frieren, _dandadan, _solo].firstWhere((m) => m['id'] == vars['id']);
-      data = {
-        'Media': {
-          ...m,
-          'description': 'A <i>long</i> story.<br>Second line &amp; more.',
-          'startDate': {'year': 2026},
-          'studios': {
-            'nodes': [{'name': 'Madhouse'}],
-          },
-          'recommendations': {
-            'nodes': [{'mediaRecommendation': _solo}],
-          },
-        },
-      };
-    } else {
-      final search = (vars['search'] as String?)?.toLowerCase();
-      final all = [_frieren, _dandadan, _solo];
-      final hits = search == null ? all : all.where((m) => (m['title'] as Map)['english'].toLowerCase().contains(search)).toList();
-      data = {
-        'Page': {'pageInfo': {'hasNextPage': false}, 'media': hits},
-      };
-    }
-    return http.Response(jsonEncode({'data': data}), 200, headers: {'content-type': 'application/json'});
-  });
-}
-
-Future<(ProviderContainer, FakeAniList)> pumpApp(WidgetTester tester, {Map<String, Object> prefs = const {}}) async {
-  SharedPreferences.setMockInitialValues(prefs);
-  final sp = await SharedPreferences.getInstance();
-  final fake = FakeAniList();
-  final container = ProviderContainer(overrides: [
-    prefsProvider.overrideWithValue(sp),
-    aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
-  ]);
-  addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const KairoApp()));
-  await tester.pumpAndSettle();
-  return (container, fake);
-}
-
-/// Unmounts the app so its timers (carousel auto-advance) are cancelled before the test ends.
-Future<void> unmount(WidgetTester tester) => tester.pumpWidget(const SizedBox());
+import 'support.dart';
 
 void main() {
   testWidgets('Home shows AniList titles and the five tabs', (tester) async {
@@ -146,7 +63,7 @@ void main() {
   });
 
   testWidgets('the watchlist is read back from the phone on start', (tester) async {
-    final entry = WatchEntry(anime: Anime.fromAniList(_frieren), status: ListStatus.watching, watched: 5, updatedAt: DateTime(2026));
+    final entry = WatchEntry(anime: Anime.fromAniList(frieren), status: ListStatus.watching, watched: 5, updatedAt: DateTime(2026));
     await pumpApp(tester, prefs: {'watchlist.v1': jsonEncode([entry.toJson()])});
 
     expect(find.text('Continue watching'), findsOneWidget);
@@ -166,22 +83,22 @@ void main() {
 
     test('marking the last episode completes the title', () {
       final notifier = container.read(watchlistProvider.notifier);
-      final solo = Anime.fromAniList(_solo);
-      notifier.setWatched(solo, 11);
-      notifier.markNextWatched(solo);
-      notifier.markNextWatched(solo);
+      final soloAnime = Anime.fromAniList(solo);
+      notifier.setWatched(soloAnime, 11);
+      notifier.markNextWatched(soloAnime);
+      notifier.markNextWatched(soloAnime);
 
-      final entry = container.read(watchlistProvider)[solo.id]!;
+      final entry = container.read(watchlistProvider)[soloAnime.id]!;
       expect(entry.watched, 12);
       expect(entry.status, ListStatus.completed);
     });
 
     test('airing shows without an episode total can keep counting', () {
       final notifier = container.read(watchlistProvider.notifier);
-      final dandadan = Anime.fromAniList(_dandadan);
-      notifier.setStatus(dandadan, ListStatus.watching);
+      final dandadanAnime = Anime.fromAniList(dandadan);
+      notifier.setStatus(dandadanAnime, ListStatus.watching);
       for (var i = 0; i < 3; i++) {
-        notifier.markNextWatched(dandadan);
+        notifier.markNextWatched(dandadanAnime);
       }
       expect(container.read(watchlistProvider)[2]!.watched, 3);
       expect(container.read(watchlistProvider)[2]!.status, ListStatus.watching);
@@ -189,7 +106,7 @@ void main() {
   });
 
   test('a saved anime reads back the same', () {
-    final a = Anime.fromAniList(_dandadan);
+    final a = Anime.fromAniList(dandadan);
     final b = Anime.fromAniList(a.toJson());
     expect(b.title, 'Dandadan');
     expect(b.color, a.color);

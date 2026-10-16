@@ -95,7 +95,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       height: 150,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(KairoRadii.panel),
-                        boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8))],
+                        boxShadow: [
+                          BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8)),
+                        ],
                       ),
                       child: CoverArt(anime: anime, radius: KairoRadii.panel),
                     ),
@@ -104,14 +106,23 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(anime.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, height: 1.2)),
+                          Text(
+                            anime.title,
+                            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, height: 1.2),
+                          ),
                           if (anime.nativeTitle != null) ...[
                             const SizedBox(height: 2),
-                            Text(anime.nativeTitle!, style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary)),
+                            Text(
+                              anime.nativeTitle!,
+                              style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+                            ),
                           ],
                           if (anime.studios.isNotEmpty) ...[
                             const SizedBox(height: 4),
-                            Text(anime.studios.join(', '), style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w700)),
+                            Text(
+                              anime.studios.join(', '),
+                              style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w700),
+                            ),
                           ],
                         ],
                       ),
@@ -134,7 +145,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     Expanded(
                       child: entry == null
                           ? FilledButton.icon(
-                              onPressed: () => ref.read(watchlistProvider.notifier).setStatus(anime, ListStatus.planned),
+                              onPressed: () =>
+                                  ref.read(watchlistProvider.notifier).setStatus(anime, ListStatus.planned),
                               icon: const Icon(Icons.add_rounded),
                               label: const Text('Add to list'),
                             )
@@ -144,7 +156,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                   : () => ref.read(watchlistProvider.notifier).setWatched(anime, watched + 1),
                               icon: const Icon(Icons.check_rounded),
                               label: Text(
-                                anime.episodes != null && watched >= anime.episodes! ? 'All watched' : 'Watched Ep ${watched + 1}',
+                                anime.episodes != null && watched >= anime.episodes!
+                                    ? 'All watched'
+                                    : 'Watched Ep ${watched + 1}',
                               ),
                             ),
                     ),
@@ -160,7 +174,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                   const SizedBox(height: KairoSpacing.md),
                   Row(
                     children: [
-                      Expanded(child: ProgressLine(value: watched / episodeCount, color: accent)),
+                      Expanded(
+                        child: ProgressLine(value: watched / episodeCount, color: accent),
+                      ),
                       const SizedBox(width: KairoSpacing.md),
                       Text(
                         '$watched / ${anime.episodes ?? '?'}',
@@ -170,7 +186,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                   ),
                 ],
                 const SizedBox(height: KairoSpacing.lg),
-                Wrap(spacing: KairoSpacing.sm, runSpacing: KairoSpacing.sm, children: [for (final g in anime.genres) TagChip(g)]),
+                Wrap(
+                  spacing: KairoSpacing.sm,
+                  runSpacing: KairoSpacing.sm,
+                  children: [for (final g in anime.genres) TagChip(g)],
+                ),
                 const SizedBox(height: KairoSpacing.lg),
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
@@ -194,10 +214,17 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                   const SizedBox(height: KairoSpacing.sm),
                   Row(
                     children: [
-                      const Expanded(child: Text('Episodes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-                      Text(
-                        anime.isAiring && anime.episodes != null ? '${anime.airedEpisodes} of ${anime.episodes} aired' : '$episodeCount episodes',
-                        style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+                      const Expanded(
+                        child: Text('Episodes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      ),
+                      Flexible(
+                        child: Text(
+                          anime.isAiring && anime.episodes != null
+                              ? '${anime.airedEpisodes} of ${anime.episodes} aired'
+                              : '$episodeCount episodes',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+                        ),
                       ),
                     ],
                   ),
@@ -208,7 +235,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       episode: ep,
                       watched: ep <= watched,
                       aired: !anime.isAiring || ep <= anime.airedEpisodes,
-                      onToggle: () => ref.read(watchlistProvider.notifier).setWatched(anime, ep <= watched ? ep - 1 : ep),
+                      onToggle: () =>
+                          ref.read(watchlistProvider.notifier).setWatched(anime, ep <= watched ? ep - 1 : ep),
                     ),
                   if (episodeCount > _collapsedEpisodes)
                     Center(
@@ -263,7 +291,10 @@ class _InfoStrip extends StatelessWidget {
             : ScoreLabel(score: anime.score!, size: 15),
         'Score',
       ),
-      (Text(anime.episodes?.toString() ?? '?', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)), 'Episodes'),
+      (
+        Text(anime.episodes?.toString() ?? '?', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        'Episodes',
+      ),
       (Text(anime.formatLabel, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)), anime.statusLabel),
       (
         Text(anime.year?.toString() ?? '–', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -273,10 +304,7 @@ class _InfoStrip extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: KairoSpacing.md),
-      decoration: BoxDecoration(
-        color: KairoColors.surface,
-        borderRadius: BorderRadius.circular(KairoRadii.panel),
-      ),
+      decoration: BoxDecoration(color: KairoColors.surface, borderRadius: BorderRadius.circular(KairoRadii.panel)),
       child: Row(
         children: [
           for (var i = 0; i < cells.length; i++) ...[
@@ -284,7 +312,7 @@ class _InfoStrip extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  cells[i].$1,
+                  FittedBox(fit: BoxFit.scaleDown, child: cells[i].$1),
                   const SizedBox(height: 2),
                   Text(cells[i].$2, style: const TextStyle(fontSize: 11, color: KairoColors.textSecondary)),
                 ],
@@ -332,12 +360,12 @@ class _StatusButton extends StatelessWidget {
   final VoidCallback? onRemove;
 
   Color get _color => switch (status) {
-        ListStatus.watching => KairoColors.primarySoft,
-        ListStatus.completed => KairoColors.success,
-        ListStatus.paused => KairoColors.info,
-        ListStatus.dropped => KairoColors.accent,
-        ListStatus.planned || null => KairoColors.textSecondary,
-      };
+    ListStatus.watching => KairoColors.primarySoft,
+    ListStatus.completed => KairoColors.success,
+    ListStatus.paused => KairoColors.info,
+    ListStatus.dropped => KairoColors.accent,
+    ListStatus.planned || null => KairoColors.textSecondary,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +374,10 @@ class _StatusButton extends StatelessWidget {
         for (final s in ListStatus.values)
           MenuItemButton(
             onPressed: () => onSelected(s),
-            leadingIcon: Icon(s == status ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, size: 18),
+            leadingIcon: Icon(
+              s == status ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+              size: 18,
+            ),
             child: Text(s.label),
           ),
         if (onRemove != null) ...[
@@ -360,7 +391,11 @@ class _StatusButton extends StatelessWidget {
       ],
       builder: (context, controller, _) => OutlinedButton.icon(
         onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-        style: OutlinedButton.styleFrom(foregroundColor: _color, side: BorderSide(color: _color), minimumSize: const Size(0, 48)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _color,
+          side: BorderSide(color: _color),
+          minimumSize: const Size(0, 48),
+        ),
         icon: Icon(status == null ? Icons.bookmark_add_outlined : Icons.bookmark_rounded, size: 18),
         label: Text(status?.label ?? 'Status'),
       ),
@@ -413,13 +448,15 @@ class _EpisodeRow extends StatelessWidget {
                       children: [
                         Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: 0.35))),
                         Center(
-                          child: Text(
-                            '$episode',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                          ),
+                          child: Text('$episode', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         ),
                         if (watched)
-                          const Positioned(left: 0, right: 0, bottom: 0, child: SizedBox(height: 3, child: ColoredBox(color: KairoColors.accent))),
+                          const Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: SizedBox(height: 3, child: ColoredBox(color: KairoColors.accent)),
+                          ),
                       ],
                     ),
                   ),

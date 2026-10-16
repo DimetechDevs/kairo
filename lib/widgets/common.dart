@@ -14,8 +14,10 @@ class ScreenTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(KairoSpacing.gutter, KairoSpacing.lg, KairoSpacing.gutter, KairoSpacing.md),
       child: Row(
         children: [
-          Expanded(child: Text(text, style: KairoTheme.display(context), semanticsLabel: text)),
-          ?trailing,
+          Expanded(
+            child: Text(text, style: KairoTheme.display(context), semanticsLabel: text),
+          ),
+          if (trailing != null) Flexible(child: trailing!),
         ],
       ),
     );
@@ -82,19 +84,35 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(KairoSpacing.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 40, color: KairoColors.primary),
-            const SizedBox(height: KairoSpacing.md),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: KairoSpacing.xs),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: KairoColors.textSecondary)),
-            if (action != null) ...[const SizedBox(height: KairoSpacing.lg), action!],
-          ],
+    // Scrolls instead of overflowing when space is short (large text, landscape, small boxes).
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight.isFinite ? constraints.maxHeight : 0),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(KairoSpacing.xxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 40, color: KairoColors.primary),
+                  const SizedBox(height: KairoSpacing.md),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: KairoSpacing.xs),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: KairoColors.textSecondary),
+                  ),
+                  if (action != null) ...[const SizedBox(height: KairoSpacing.lg), action!],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -169,7 +187,10 @@ class FilterPill extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       trailing!,
-                      style: TextStyle(fontSize: 13, color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8)),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8),
+                      ),
                     ),
                   ],
                 ],
@@ -225,7 +246,8 @@ class Skeleton extends StatefulWidget {
 }
 
 class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat(reverse: true);
 
   @override
   void dispose() {
@@ -263,6 +285,31 @@ class ErrorState extends StatelessWidget {
         onPressed: onRetry,
         icon: const Icon(Icons.refresh_rounded),
         label: const Text('Try again'),
+      ),
+    );
+  }
+}
+
+/// A horizontally scrolling row whose height comes from its tallest child,
+/// so cards never overflow at large text sizes. For short lists (a few dozen items).
+class HorizontalStrip extends StatelessWidget {
+  const HorizontalStrip({super.key, required this.children, this.spacing = KairoSpacing.md, this.physics});
+
+  final List<Widget> children;
+  final double spacing;
+  final ScrollPhysics? physics;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: physics,
+      padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < children.length; i++) ...[if (i > 0) SizedBox(width: spacing), children[i]],
+        ],
       ),
     );
   }

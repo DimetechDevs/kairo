@@ -32,7 +32,14 @@ class DiscoverRequest extends Notifier<DiscoverSort?> {
 
 final discoverRequestProvider = NotifierProvider<DiscoverRequest, DiscoverSort?>(DiscoverRequest.new);
 
-const _formats = {'TV': 'TV', 'MOVIE': 'Movie', 'ONA': 'ONA', 'OVA': 'OVA', 'SPECIAL': 'Special', 'TV_SHORT': 'TV Short'};
+const _formats = {
+  'TV': 'TV',
+  'MOVIE': 'Movie',
+  'ONA': 'ONA',
+  'OVA': 'OVA',
+  'SPECIAL': 'Special',
+  'TV_SHORT': 'TV Short',
+};
 const _statuses = {'RELEASING': 'Airing', 'FINISHED': 'Finished', 'NOT_YET_RELEASED': 'Upcoming'};
 
 class DiscoverScreen extends ConsumerStatefulWidget {
@@ -102,7 +109,9 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     final season = _sort == DiscoverSort.season ? seasonOf(DateTime.now()) : null;
     setState(() => _loading = true);
     try {
-      final page = await ref.read(aniListProvider).browse(
+      final page = await ref
+          .read(aniListProvider)
+          .browse(
             page: _page + 1,
             sort: _sort.apiSort,
             search: _search.text,
@@ -141,6 +150,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   Future<void> _openFilters() async {
     final result = await showModalBottomSheet<(String?, String?)>(
       context: context,
+      isScrollControlled: true,
       builder: (_) => _FilterSheet(format: _format, status: _status),
     );
     if (result == null) return;
@@ -234,16 +244,11 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             },
           ),
           const SizedBox(height: KairoSpacing.sm),
-          SizedBox(
-            height: 36,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-              itemCount: aniListGenres.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.sm),
-              itemBuilder: (_, i) {
-                final genre = i == 0 ? null : aniListGenres[i - 1];
-                return FilterPill(
+          HorizontalStrip(
+            spacing: KairoSpacing.sm,
+            children: [
+              for (final genre in [null, ...aniListGenres])
+                FilterPill(
                   label: genre ?? 'All',
                   selected: genre == _genre,
                   selectedColor: KairoColors.accent,
@@ -253,9 +258,8 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     _genre = genre;
                     _reload();
                   },
-                );
-              },
-            ),
+                ),
+            ],
           ),
           const SizedBox(height: KairoSpacing.md),
           Expanded(child: _results()),
@@ -274,11 +278,16 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       );
     }
 
-    const grid = SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 3,
+    // Each cell is a 2:3 poster plus two title lines and a meta line, sized for the user's font size.
+    final width = MediaQuery.sizeOf(context).width;
+    final scaler = MediaQuery.textScalerOf(context);
+    final columns = width / scaler.scale(1) < 300 ? 2 : 3;
+    final cellWidth = (width - 2 * KairoSpacing.gutter - (columns - 1) * KairoSpacing.md) / columns;
+    final grid = SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
       mainAxisSpacing: KairoSpacing.lg,
       crossAxisSpacing: KairoSpacing.md,
-      childAspectRatio: 0.47,
+      mainAxisExtent: cellWidth * 1.5 + 10 + scaler.scale(13 * 1.3 * 2 + 11 * 1.6),
     );
     const padding = EdgeInsets.symmetric(horizontal: KairoSpacing.gutter);
 
@@ -303,14 +312,19 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
               padding: const EdgeInsets.symmetric(vertical: KairoSpacing.xl),
               child: Center(
                 child: switch ((_items.isNotEmpty, _loading, _error)) {
-                  (true, true, _) => const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  (true, true, _) => const SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
                   (true, false, final Object _) => TextButton.icon(
-                      onPressed: _loadMore,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text("Couldn't load more · Try again"),
-                    ),
-                  (true, false, null) when !_hasNext =>
-                    const Text("That's everything", style: TextStyle(fontSize: 12, color: KairoColors.textMuted)),
+                    onPressed: _loadMore,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text("Couldn't load more · Try again"),
+                  ),
+                  (true, false, null) when !_hasNext => const Text(
+                    "That's everything",
+                    style: TextStyle(fontSize: 12, color: KairoColors.textMuted),
+                  ),
                   _ => const SizedBox.shrink(),
                 },
               ),
@@ -398,7 +412,8 @@ class _FilterSheetState extends State<_FilterSheet> {
           runSpacing: KairoSpacing.sm,
           children: [
             FilterPill(label: 'Any', selected: value == null, onTap: () => onChanged(null)),
-            for (final o in options.entries) FilterPill(label: o.value, selected: value == o.key, onTap: () => onChanged(o.key)),
+            for (final o in options.entries)
+              FilterPill(label: o.value, selected: value == o.key, onTap: () => onChanged(o.key)),
           ],
         ),
       ],
@@ -408,33 +423,35 @@ class _FilterSheetState extends State<_FilterSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(KairoSpacing.gutter, 0, KairoSpacing.gutter, KairoSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _group('Format', _formats, _format, (v) => setState(() => _format = v)),
-            const SizedBox(height: KairoSpacing.xl),
-            _group('Status', _statuses, _status, (v) => setState(() => _status = v)),
-            const SizedBox(height: KairoSpacing.xxl),
-            Row(
-              children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(context, (null, null)),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-                  child: const Text('Reset'),
-                ),
-                const SizedBox(width: KairoSpacing.sm),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context, (_format, _status)),
-                    child: const Text('Show results'),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(KairoSpacing.gutter, 0, KairoSpacing.gutter, KairoSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _group('Format', _formats, _format, (v) => setState(() => _format = v)),
+              const SizedBox(height: KairoSpacing.xl),
+              _group('Status', _statuses, _status, (v) => setState(() => _status = v)),
+              const SizedBox(height: KairoSpacing.xxl),
+              Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context, (null, null)),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                    child: const Text('Reset'),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: KairoSpacing.sm),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context, (_format, _status)),
+                      child: const Text('Show results'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

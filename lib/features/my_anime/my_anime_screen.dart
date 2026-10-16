@@ -36,23 +36,17 @@ class _MyAnimeScreenState extends ConsumerState<MyAnimeScreen> {
               style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
             ),
           ),
-          SizedBox(
-            height: 36,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: KairoSpacing.gutter),
-              itemCount: ListStatus.values.length,
-              separatorBuilder: (_, _) => const SizedBox(width: KairoSpacing.sm),
-              itemBuilder: (_, i) {
-                final s = ListStatus.values[i];
-                return FilterPill(
+          HorizontalStrip(
+            spacing: KairoSpacing.sm,
+            children: [
+              for (final s in ListStatus.values)
+                FilterPill(
                   label: s.label,
                   trailing: '${entries.where((e) => e.status == s).length}',
                   selected: s == _tab,
                   onTap: () => setState(() => _tab = s),
-                );
-              },
-            ),
+                ),
+            ],
           ),
           const SizedBox(height: KairoSpacing.md),
           Expanded(
@@ -92,7 +86,11 @@ class _ListRow extends ConsumerWidget {
     final label = switch (entry.status) {
       ListStatus.completed => 'Completed · ${anime.episodesLabel}',
       ListStatus.watching || ListStatus.paused || ListStatus.dropped => 'Ep ${entry.watched} / ${total ?? '?'}',
-      ListStatus.planned => [anime.formatLabel, anime.episodesLabel, if (anime.year != null) '${anime.year}'].join(' · '),
+      ListStatus.planned => [
+        anime.formatLabel,
+        anime.episodesLabel,
+        if (anime.year != null) '${anime.year}',
+      ].join(' · '),
     };
     final progressBase = total ?? (anime.airedEpisodes > 0 ? anime.airedEpisodes : null);
 
@@ -129,7 +127,10 @@ class _ListRow extends ConsumerWidget {
                             style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
                           ),
                         ),
-                        if (anime.score != null) ...[const SizedBox(width: 8), ScoreLabel(score: anime.score!, size: 12)],
+                        if (anime.score != null) ...[
+                          const SizedBox(width: 8),
+                          ScoreLabel(score: anime.score!, size: 12),
+                        ],
                       ],
                     ),
                     if (anime.nextAiring != null && entry.status != ListStatus.completed)
