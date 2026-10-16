@@ -187,3 +187,83 @@ String formatDuration(Duration d) {
   final s = d.inSeconds % 60;
   return '$m:${s.toString().padLeft(2, '0')}';
 }
+
+/// AniList's average score as a star rating out of 10, e.g. "★ 8.5".
+class ScoreLabel extends StatelessWidget {
+  const ScoreLabel({super.key, required this.score, this.size = 13});
+
+  final int score;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.star_rounded, size: size + 2, color: KairoColors.star),
+        const SizedBox(width: 2),
+        Text(
+          (score / 10).toStringAsFixed(1),
+          semanticsLabel: 'Score ${(score / 10).toStringAsFixed(1)} out of 10',
+          style: TextStyle(fontSize: size, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
+/// A grey block that gently pulses while content loads.
+class Skeleton extends StatefulWidget {
+  const Skeleton({super.key, this.width, this.height, this.radius = 6});
+
+  final double? width;
+  final double? height;
+  final double radius;
+
+  @override
+  State<Skeleton> createState() => _SkeletonState();
+}
+
+class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
+  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
+      child: Container(
+        width: widget.width,
+        height: widget.height,
+        decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(widget.radius)),
+      ),
+    );
+  }
+}
+
+/// Shown when a request fails, with a way to try again.
+class ErrorState extends StatelessWidget {
+  const ErrorState({super.key, required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      icon: Icons.cloud_off_rounded,
+      title: "Couldn't load this",
+      message: '$error',
+      action: OutlinedButton.icon(
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Try again'),
+      ),
+    );
+  }
+}

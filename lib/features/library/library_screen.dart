@@ -60,8 +60,9 @@ class LibraryScreen extends ConsumerWidget {
                         for (final f in unmatched) _UnmatchedCard(file: f),
                         const SizedBox(height: KairoSpacing.xl),
                       ],
-                      for (final entry in byAnime.entries) ...[
-                        _AnimeGroup(anime: ref.watch(animeProvider(entry.key)), files: entry.value),
+                      for (final entry in byAnime.entries)
+                        if (ref.watch(animeProvider(entry.key)) case final anime?) ...[
+                        _AnimeGroup(anime: anime, files: entry.value),
                         const SizedBox(height: KairoSpacing.xl),
                       ],
                       const Text(

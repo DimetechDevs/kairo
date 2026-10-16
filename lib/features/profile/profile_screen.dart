@@ -21,6 +21,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final entries = ref.watch(watchlistProvider).values;
     final episodes = entries.fold<int>(0, (sum, e) => sum + e.watched);
+    final minutes = entries.fold<int>(0, (sum, e) => sum + e.watched * (e.anime.duration ?? 24));
     final completed = entries.where((e) => e.status == ListStatus.completed).length;
     final files = ref.watch(libraryProvider).length;
 
@@ -78,7 +79,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     Expanded(child: _StatTile(value: '$episodes', label: 'Episodes', color: KairoColors.primarySoft)),
                     const SizedBox(width: 10),
-                    Expanded(child: _StatTile(value: '${(episodes * 24 / 60).round()} h', label: 'Watched', color: KairoColors.accent)),
+                    Expanded(child: _StatTile(value: '${(minutes / 60).round()} h', label: 'Watched', color: KairoColors.accent)),
                     const SizedBox(width: 10),
                     Expanded(child: _StatTile(value: '$completed', label: 'Completed', color: KairoColors.success)),
                   ],

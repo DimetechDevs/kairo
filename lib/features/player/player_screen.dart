@@ -94,6 +94,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final anime = ref.watch(animeProvider(widget.animeId));
+    if (anime == null) {
+      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
+    }
     final fraction = _position.inMilliseconds / _duration.inMilliseconds;
 
     return Scaffold(
@@ -253,7 +256,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                           ),
                         const SizedBox(width: 8),
                         OutlinedButton.icon(
-                          onPressed: anime.episodes > widget.episode
+                          onPressed: (anime.episodes ?? anime.airedEpisodes) > widget.episode
                               ? () => context.pushReplacement('/player/${anime.id}/${widget.episode + 1}')
                               : null,
                           icon: const Icon(Icons.skip_next_rounded),
