@@ -8,9 +8,11 @@ import '../../core/theme.dart';
 import '../../data/filename_parser.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../data/watch_links.dart';
 import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
+import '../watch/web_watch_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -93,14 +95,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ? EmptyState(
                     icon: Icons.video_library_outlined,
                     title: 'No videos yet',
-                    message:
-                        'Import episodes from your phone to watch them offline, or add a stream URL from your own media server.',
+                    message: 'Import episodes from your phone to watch them offline, or add a stream URL from your own media server.',
                     action: Wrap(
                       spacing: KairoSpacing.sm,
                       runSpacing: KairoSpacing.sm,
                       alignment: WrapAlignment.center,
                       children: [
-                        FilledButton.icon(onPressed: _import, icon: const Icon(Icons.add_rounded), label: const Text('Import videos')),
+                        FilledButton.icon(
+                          onPressed: _import,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Import videos'),
+                        ),
                         OutlinedButton.icon(
                           onPressed: _addStream,
                           icon: const Icon(Icons.link_rounded),
@@ -183,7 +188,10 @@ class _UnmatchedCard extends ConsumerWidget {
                 child: suggestion != null
                     ? CoverArt(anime: suggestion, banner: true, radius: 8)
                     : DecoratedBox(
-                        decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(8)),
+                        decoration: BoxDecoration(
+                          color: KairoColors.surfaceRaised,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: const Icon(Icons.movie_outlined, color: KairoColors.textMuted),
                       ),
               ),
@@ -211,17 +219,22 @@ class _UnmatchedCard extends ConsumerWidget {
           const SizedBox(height: 10),
           if (suggestion != null)
             Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'Looks like '),
-                TextSpan(
-                  text: '${suggestion.title} · Episode ${file.suggestedEpisode}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ]),
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Looks like '),
+                  TextSpan(
+                    text: '${suggestion.title} · Episode ${file.suggestedEpisode}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
               style: const TextStyle(fontSize: 13, color: Color(0xFFD9D6E8)),
             )
           else
-            const Text("Couldn't tell which show this is.", style: TextStyle(fontSize: 13, color: KairoColors.textSecondary)),
+            const Text(
+              "Couldn't tell which show this is.",
+              style: TextStyle(fontSize: 13, color: KairoColors.textSecondary),
+            ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -242,7 +255,11 @@ class _UnmatchedCard extends ConsumerWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => _chooseMatch(context, ref, file),
-                  child: Text(suggestion != null ? 'Choose' : 'Choose show', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    suggestion != null ? 'Choose' : 'Choose show',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],
@@ -314,6 +331,7 @@ class _FileRow extends ConsumerWidget {
       (true, _) => ('File missing · moved or deleted', KairoColors.accent),
       (false, final PlaybackProgress p) when p.finished => ('Watched', KairoColors.success),
       (false, final PlaybackProgress p) => ('${(p.remaining.inSeconds / 60).ceil()} min left', KairoColors.info),
+      _ when file.isWebLink => ('Watch link · ${linkLabel(file.uri)}', serviceFor(file.uri)?.color ?? KairoColors.info),
       _ => (file.isStream ? 'Stream' : 'Ready to play', KairoColors.success),
     };
 
@@ -331,14 +349,20 @@ class _FileRow extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Episode ${file.episode}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                Text(
+                  file.episode == 0 ? 'Whole show' : 'Episode ${file.episode}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
                 Text(
                   [file.fileName, if (file.sizeLabel.isNotEmpty) file.sizeLabel].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
                 ),
-                Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+                ),
                 if (progress != null && !progress.finished && !missing) ...[
                   const SizedBox(height: 4),
                   ProgressLine(value: progress.fraction, color: KairoColors.accent, height: 3),
@@ -357,8 +381,16 @@ class _FileRow extends ConsumerWidget {
             )
           else
             IconButton.filledTonal(
-              tooltip: 'Play episode ${file.episode}',
-              onPressed: () => context.push(Routes.player(anime.id, file.episode!)),
+              tooltip: file.isWebLink ? 'Open ${linkLabel(file.uri)}' : 'Play episode ${file.episode}',
+              onPressed: file.isWebLink
+                  ? () => openWatchLink(
+                      context,
+                      ref,
+                      file.uri,
+                      animeId: anime.id,
+                      episode: file.episode == 0 ? null : file.episode,
+                    )
+                  : () => context.push(Routes.player(anime.id, file.episode!)),
               icon: const Icon(Icons.play_arrow_rounded),
             ),
           _FileMenu(file: file),
