@@ -184,6 +184,29 @@ class AniListClient {
     return ResultPage(_media(p), page: page, hasNext: (p['pageInfo'] as Map)['hasNextPage'] as bool? ?? false);
   }
 
+  /// Episodes that haven't aired yet for these titles, soonest first (a few weeks ahead).
+  Future<List<({int animeId, int episode, DateTime at})>> upcomingEpisodes(List<int> ids) async {
+    if (ids.isEmpty) return const [];
+    final data = await _query(
+      '''
+      query (\$ids: [Int]) {
+        Page(perPage: 50) {
+          airingSchedules(mediaId_in: \$ids, notYetAired: true, sort: TIME) { mediaId episode airingAt }
+        }
+      }
+      ''',
+      {'ids': ids},
+    );
+    return [
+      for (final s in (data['Page'] as Map<String, dynamic>)['airingSchedules'] as List? ?? const [])
+        (
+          animeId: (s as Map<String, dynamic>)['mediaId'] as int,
+          episode: s['episode'] as int,
+          at: DateTime.fromMillisecondsSinceEpoch((s['airingAt'] as int) * 1000),
+        ),
+    ];
+  }
+
   /// Full details for one title, including studios, synopsis and recommendations.
   Future<Anime> details(int id) async {
     final data = await _query(
