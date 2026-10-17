@@ -31,6 +31,9 @@ void main() {
     await tester.tap(find.widgetWithText(NavigationDestination, 'Discover'));
     await tester.pumpAndSettle();
     expect(find.text('Solo Leveling'), findsOneWidget);
+    // Unused filters must be left out: AniList treats null as a filter and returns nothing.
+    expect(fake.requests.last.values, isNot(contains(null)));
+    expect(fake.requests.last.containsKey('status'), isFalse);
 
     await tester.enterText(find.byType(TextField), 'frier');
     await tester.pump(const Duration(milliseconds: 500));
