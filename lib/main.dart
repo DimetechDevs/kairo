@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/router.dart';
 import 'core/theme.dart';
 import 'data/airing_alerts.dart';
+import 'data/anilist_sync.dart';
 import 'data/local_store.dart';
 import 'data/providers.dart';
 
@@ -31,6 +32,7 @@ Future<void> main() async {
   // Notice files that were moved or deleted while the app was closed, and refresh episode alerts.
   container.read(libraryProvider.notifier).checkMissing().ignore();
   container.read(airingAlertsProvider).sync().ignore();
+  container.read(aniListSyncProvider.notifier).syncNow().ignore(); // No-op unless signed in.
 
   runApp(UncontrolledProviderScope(container: container, child: KairoApp(router: router)));
   if (launchRoute != null) WidgetsBinding.instance.addPostFrameCallback((_) => router.push(launchRoute));

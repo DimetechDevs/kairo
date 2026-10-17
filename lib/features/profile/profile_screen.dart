@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../data/models.dart';
+import '../../data/anilist_sync.dart';
 import '../../data/providers.dart';
 import '../../data/settings.dart';
 import '../../widgets/common.dart';
@@ -73,55 +75,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: KairoColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFF2F2B47)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 26,
-                            backgroundColor: KairoColors.primary,
-                            child: Text(
-                              'G',
-                              style: TextStyle(color: KairoColors.text, fontSize: 20, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Guest', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                                Text(
-                                  'Your list is saved on this phone',
-                                  style: TextStyle(fontSize: 13, color: KairoColors.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      FilledButton(
-                        onPressed: () =>
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(const SnackBar(content: Text('Accounts and sync come in phase 2.'))),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: KairoColors.text,
-                          foregroundColor: KairoColors.background,
-                        ),
-                        child: const Text('Sign in to back up and sync'),
-                      ),
-                    ],
-                  ),
-                ),
+                const _AccountCard(),
                 const SizedBox(height: KairoSpacing.xl),
                 Row(
                   children: [
@@ -245,7 +199,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       value: '$files ${files == 1 ? 'video' : 'videos'}',
                       onTap: () => StatefulNavigationShell.of(context).goBranch(3),
                     ),
-                    const _ValueRow(label: 'Cloud sync', value: 'Off · Guest'),
+                    _ValueRow(
+                      label: 'Cloud sync',
+                      value: ref.watch(aniListSyncProvider).signedIn ? 'AniList · On' : 'Off · Guest',
+                    ),
                   ],
                 ),
                 const SizedBox(height: KairoSpacing.xl),
@@ -370,6 +327,130 @@ class _ValueRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Guest or signed-in AniList account, with sign-in, sync and sign-out.
+class _AccountCard extends ConsumerWidget {
+  const _AccountCard();
+
+  static String _ago(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(aniListSyncProvider);
+    final notifier = ref.read(aniListSyncProvider.notifier);
+    final user = sync.user;
+    final subtitle = switch ((user, sync.syncing, sync.lastSync)) {
+      (null, _, _) => 'Your list is saved on this phone',
+      (_, true, _) => 'Syncing with AniList…',
+      (_, false, final DateTime t) => 'Synced with AniList · ${_ago(t)}',
+      _ => 'Signed in with AniList',
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: KairoColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF2F2B47)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: KairoColors.primary,
+                foregroundImage: user?.avatarUrl == null ? null : CachedNetworkImageProvider(user!.avatarUrl!),
+                child: Text(
+                  (user?.name ?? 'Guest').characters.first.toUpperCase(),
+                  style: const TextStyle(color: KairoColors.text, fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user?.name ?? 'Guest',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    ),
+                    Text(subtitle, style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (sync.error != null) ...[
+            const SizedBox(height: KairoSpacing.md),
+            Text(sync.error!, style: const TextStyle(fontSize: 13, color: KairoColors.accent)),
+          ],
+          const SizedBox(height: 14),
+          if (user == null)
+            FilledButton.icon(
+              onPressed: sync.syncing ? null : notifier.signIn,
+              style: FilledButton.styleFrom(backgroundColor: KairoColors.text, foregroundColor: KairoColors.background),
+              icon: sync.syncing
+                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync_rounded),
+              label: const Text('Sign in with AniList to sync', maxLines: 1, overflow: TextOverflow.ellipsis),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: sync.syncing ? null : notifier.syncNow,
+                    icon: const Icon(Icons.sync_rounded),
+                    label: const Text('Sync now', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+                const SizedBox(width: KairoSpacing.sm),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: sync.syncing
+                        ? null
+                        : () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                backgroundColor: KairoColors.surface,
+                                title: const Text('Sign out of AniList?'),
+                                content: const Text('Your list stays on this phone. It just stops syncing.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Sign out'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok == true) await notifier.signOut();
+                          },
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                    child: const Text('Sign out', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
