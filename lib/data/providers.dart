@@ -97,6 +97,9 @@ class WatchlistNotifier extends Notifier<Map<int, WatchEntry>> {
     });
   }
 
+  /// Replaces the whole list as-is (timestamps kept). Used when merging with AniList.
+  void replaceAll(Map<int, WatchEntry> entries) => _save(entries);
+
   /// Refreshes the saved copy of a title after its details load (new episodes, artwork, ...).
   void refreshSnapshot(Anime anime) {
     final current = state[anime.id];
