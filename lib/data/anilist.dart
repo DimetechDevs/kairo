@@ -108,7 +108,12 @@ class AniListClient {
               'Accept': 'application/json',
               if (token != null) 'Authorization': 'Bearer $token',
             },
-            body: jsonEncode({'query': query, 'variables': variables}),
+            // AniList treats an explicit null as a filter (e.g. status: null matches nothing),
+            // so unused filters are left out instead of sent as null.
+            body: jsonEncode({
+              'query': query,
+              'variables': {...variables}..removeWhere((_, v) => v == null),
+            }),
           )
           .timeout(const Duration(seconds: 15));
       final body = jsonDecode(res.body) as Map<String, dynamic>;

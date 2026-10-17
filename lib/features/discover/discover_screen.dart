@@ -287,7 +287,8 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       crossAxisCount: columns,
       mainAxisSpacing: KairoSpacing.lg,
       crossAxisSpacing: KairoSpacing.md,
-      mainAxisExtent: cellWidth * 1.5 + 10 + scaler.scale(13 * 1.3 * 2 + 11 * 1.6),
+      // Poster + 6px gap + measured text, with 2px of slack for rounding.
+      mainAxisExtent: cellWidth * 1.5 + 6 + PosterCard.textHeight(context) + 2,
     );
     const padding = EdgeInsets.symmetric(horizontal: KairoSpacing.gutter);
 

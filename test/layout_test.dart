@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kairo/data/models.dart';
 
@@ -37,6 +39,20 @@ final _entries = [
 const _configs = [(320.0, 640.0, 1.0), (412.0, 915.0, 1.15), (360.0, 740.0, 1.3), (360.0, 780.0, 2.0)];
 
 void main() {
+  // Real fonts, not the test font: overflows depend on the font's actual line heights.
+  setUpAll(() async {
+    for (final (family, files) in [
+      ('Zen Kaku Gothic New', ['Regular', 'Medium', 'Bold'].map((w) => 'assets/fonts/ZenKakuGothicNew-$w.ttf')),
+      ('Dela Gothic One', ['assets/fonts/DelaGothicOne-Regular.ttf']),
+    ]) {
+      final loader = FontLoader(family);
+      for (final path in files) {
+        loader.addFont(Future.value(ByteData.sublistView(File(path).readAsBytesSync())));
+      }
+      await loader.load();
+    }
+  });
+
   for (final (width, height, scale) in _configs) {
     testWidgets('no overflow at ${width.toInt()}x${height.toInt()}, text ×$scale', (tester) async {
       tester.view.physicalSize = Size(width * 3, height * 3);
