@@ -49,7 +49,18 @@ class FakeAniList {
     requests.add(vars);
 
     Map<String, dynamic> data;
-    if (query.contains('trending: Page')) {
+    if (query.contains('airingSchedules')) {
+      final ids = (vars['ids'] as List).cast<int>();
+      data = {
+        'Page': {
+          'airingSchedules': [
+            for (final m in catalogue)
+              if (ids.contains(m['id']) && m['nextAiringEpisode'] != null)
+                {'mediaId': m['id'], ...m['nextAiringEpisode'] as Map<String, dynamic>},
+          ],
+        },
+      };
+    } else if (query.contains('trending: Page')) {
       final page = {'media': catalogue};
       data = {'trending': page, 'season': page, 'popular': page, 'topRated': page};
     } else if (query.contains('Media(id')) {

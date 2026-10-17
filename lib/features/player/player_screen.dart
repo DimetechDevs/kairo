@@ -12,6 +12,7 @@ import '../../app/router.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../data/settings.dart';
 import '../../widgets/common.dart';
 
 /// Plays an imported file or a stream URL with resume, tracks and gestures.
@@ -78,7 +79,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     final saved = ref.read(progressProvider)[(widget.animeId, widget.episode)];
     final resumeAt = saved != null && !saved.finished && saved.position > const Duration(seconds: 30) ? saved.position : null;
-    _player.open(Media(_file!.uri, start: resumeAt));
+    _applySettings().whenComplete(() => _player.open(Media(_file!.uri, start: resumeAt)));
     if (resumeAt != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _toast('Resumed at ${formatDuration(resumeAt)}'));
     }
@@ -100,13 +101,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     super.dispose();
   }
 
+  /// Preferred speed and track languages from Settings, set before the file opens.
+  Future<void> _applySettings() async {
+    final s = ref.read(settingsProvider);
+    final i = _speeds.indexOf(s.speed);
+    _speed = i >= 0 ? i : 1;
+    await _player.setRate(_speeds[_speed]);
+    if (_player.platform case final NativePlayer native) {
+      // mpv picks the first matching track; both 2- and 3-letter codes appear in files.
+      const threeLetter = {'en': 'eng', 'es': 'spa', 'pt': 'por', 'fr': 'fre,fra', 'de': 'ger,deu', 'ja': 'jpn'};
+      if (s.subtitleLanguage == 'off') {
+        await native.setProperty('sid', 'no');
+      } else {
+        await native.setProperty('slang', '${s.subtitleLanguage},${threeLetter[s.subtitleLanguage]}');
+      }
+      if (s.audioLanguage != 'auto') {
+        await native.setProperty('alang', '${s.audioLanguage},${threeLetter[s.audioLanguage]}');
+      }
+    }
+  }
+
   void _saveProgress() {
     if (_file == null || _duration <= Duration.zero) return;
     ref.read(progressProvider.notifier).save(widget.animeId, widget.episode, _position, _duration);
 
-    // Count the episode as watched once, at 90%.
+    // Count the episode as watched once, at the "count as watched" point from Settings.
     final anime = _anime;
-    if (!_countedWatched && anime != null && _position.inMilliseconds >= _duration.inMilliseconds * 0.9) {
+    if (!_countedWatched && anime != null && _position.inMilliseconds >= _duration.inMilliseconds * ref.read(settingsProvider).watchedAt) {
       _countedWatched = true;
       final watched = ref.read(watchlistProvider)[anime.id]?.watched ?? 0;
       if (widget.episode > watched) ref.read(watchlistProvider.notifier).setWatched(anime, widget.episode);
@@ -117,7 +138,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _onCompleted() {
     _saveProgress();
-    if (_nextFile != null && mounted) {
+    if (ref.read(settingsProvider).autoNext && _nextFile != null && mounted) {
       context.pushReplacement(Routes.player(widget.animeId, widget.episode + 1));
     } else {
       setState(() => _controls = true);
@@ -204,6 +225,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     final title = '${_anime?.shortTitle ?? 'Episode'} · Episode ${widget.episode}';
     final fraction = _duration.inMilliseconds == 0 ? 0.0 : _position.inMilliseconds / _duration.inMilliseconds;
     final hasNext = _file != null && _nextFile != null;
@@ -342,15 +364,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         ),
                         const Spacer(),
                         // Openings are usually about 1:30, somewhere in the first few minutes.
-                        if (_position < const Duration(minutes: 5) && _duration > const Duration(minutes: 10))
+                        if (settings.skipIntro && _position < const Duration(minutes: 5) && _duration > const Duration(minutes: 10))
                           FilledButton(
-                            onPressed: () => _seekBy(85),
+                            onPressed: () => _seekBy(settings.skipSeconds),
                             style: FilledButton.styleFrom(
                               backgroundColor: KairoColors.text,
                               foregroundColor: KairoColors.background,
                               minimumSize: const Size(0, 40),
                             ),
-                            child: const Text('Skip 85s'),
+                            child: Text('Skip ${settings.skipSeconds}s'),
                           ),
                         const SizedBox(width: 8),
                         OutlinedButton.icon(

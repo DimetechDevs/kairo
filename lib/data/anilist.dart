@@ -67,6 +67,11 @@ class HomeFeed {
   final List<Anime> topRated;
 }
 
+/// The sign-in expired or was revoked on AniList.
+class AniListAuthException extends AniListException {
+  const AniListAuthException() : super('Your AniList sign-in has expired. Sign in again to keep syncing.');
+}
+
 class AniListException implements Exception {
   const AniListException(this.message);
   final String message;
@@ -88,17 +93,29 @@ class AniListClient {
   final http.Client _http;
   final SharedPreferences? prefs;
 
-  Future<Map<String, dynamic>> _query(String query, Map<String, dynamic> variables, {String? cacheKey}) async {
+  Future<Map<String, dynamic>> _query(
+    String query,
+    Map<String, dynamic> variables, {
+    String? cacheKey,
+    String? token,
+  }) async {
     try {
       final res = await _http
           .post(
             _endpoint,
-            headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
             body: jsonEncode({'query': query, 'variables': variables}),
           )
           .timeout(const Duration(seconds: 15));
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       if (res.statusCode == 429) throw const AniListException('AniList is busy right now. Try again in a minute.');
+      if (res.statusCode == 401 || res.statusCode == 400 && token != null && '${body['errors']}'.contains('Invalid token')) {
+        throw const AniListAuthException();
+      }
       if (res.statusCode != 200 || body['errors'] != null) {
         final errors = body['errors'] as List?;
         final msg = errors?.isNotEmpty == true ? (errors!.first as Map)['message'] : 'HTTP ${res.statusCode}';
@@ -184,6 +201,29 @@ class AniListClient {
     return ResultPage(_media(p), page: page, hasNext: (p['pageInfo'] as Map)['hasNextPage'] as bool? ?? false);
   }
 
+  /// Episodes that haven't aired yet for these titles, soonest first (a few weeks ahead).
+  Future<List<({int animeId, int episode, DateTime at})>> upcomingEpisodes(List<int> ids) async {
+    if (ids.isEmpty) return const [];
+    final data = await _query(
+      '''
+      query (\$ids: [Int]) {
+        Page(perPage: 50) {
+          airingSchedules(mediaId_in: \$ids, notYetAired: true, sort: TIME) { mediaId episode airingAt }
+        }
+      }
+      ''',
+      {'ids': ids},
+    );
+    return [
+      for (final s in (data['Page'] as Map<String, dynamic>)['airingSchedules'] as List? ?? const [])
+        (
+          animeId: (s as Map<String, dynamic>)['mediaId'] as int,
+          episode: s['episode'] as int,
+          at: DateTime.fromMillisecondsSinceEpoch((s['airingAt'] as int) * 1000),
+        ),
+    ];
+  }
+
   /// Full details for one title, including studios, synopsis and recommendations.
   Future<Anime> details(int id) async {
     final data = await _query(
@@ -209,4 +249,106 @@ class AniListClient {
     if (media == null) throw const AniListException('This title is no longer on AniList.');
     return Anime.fromAniList(media);
   }
+
+  // ---- Signed-in requests (the user's own AniList list). ----
+
+  /// The signed-in user.
+  Future<AniListUser> viewer(String token) async {
+    final data = await _query('query { Viewer { id name avatar { large } } }', const {}, token: token);
+    final v = data['Viewer'] as Map<String, dynamic>;
+    return AniListUser(id: v['id'] as int, name: v['name'] as String, avatarUrl: (v['avatar'] as Map?)?['large'] as String?);
+  }
+
+  /// Every anime on the user's AniList list.
+  Future<List<RemoteListEntry>> animeList(String token, int userId) async {
+    final data = await _query(
+      '''
+      query (\$userId: Int) {
+        MediaListCollection(userId: \$userId, type: ANIME) {
+          lists { entries { id status progress updatedAt media { $_cardFields } } }
+        }
+      }
+      ''',
+      {'userId': userId},
+      token: token,
+    );
+    final lists = (data['MediaListCollection'] as Map<String, dynamic>?)?['lists'] as List? ?? const [];
+    final byMedia = <int, RemoteListEntry>{};
+    for (final l in lists) {
+      for (final e in (l as Map<String, dynamic>)['entries'] as List? ?? const []) {
+        final m = e as Map<String, dynamic>;
+        final entry = RemoteListEntry(
+          entryId: m['id'] as int,
+          anime: Anime.fromAniList(m['media'] as Map<String, dynamic>),
+          status: m['status'] as String,
+          progress: m['progress'] as int? ?? 0,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(((m['updatedAt'] as int?) ?? 0) * 1000),
+        );
+        // A title can appear in a custom list too; keep one.
+        byMedia[entry.anime.id] = entry;
+      }
+    }
+    return byMedia.values.toList();
+  }
+
+  /// Creates or updates the user's entry for a title.
+  Future<void> saveEntry(String token, {required int animeId, required String status, required int progress}) => _query(
+        r'''
+        mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int) {
+          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) { id }
+        }
+        ''',
+        {'mediaId': animeId, 'status': status, 'progress': progress},
+        token: token,
+      );
+
+  /// Removes a title from the user's list (no-op if it isn't there).
+  Future<void> deleteEntry(String token, {required int userId, required int animeId}) async {
+    final Map<String, dynamic> found;
+    try {
+      found = await _query(
+        r'query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { id } }',
+        {'userId': userId, 'mediaId': animeId},
+        token: token,
+      );
+    } on AniListAuthException {
+      rethrow;
+    } on AniListException {
+      return; // "Not Found": already gone.
+    }
+    final id = (found['MediaList'] as Map<String, dynamic>?)?['id'] as int?;
+    if (id == null) return;
+    await _query(r'mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }', {'id': id}, token: token);
+  }
+}
+
+class AniListUser {
+  const AniListUser({required this.id, required this.name, this.avatarUrl});
+
+  final int id;
+  final String name;
+  final String? avatarUrl;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'avatarUrl': avatarUrl};
+
+  factory AniListUser.fromJson(Map<String, dynamic> j) =>
+      AniListUser(id: j['id'] as int, name: j['name'] as String, avatarUrl: j['avatarUrl'] as String?);
+}
+
+class RemoteListEntry {
+  const RemoteListEntry({
+    required this.entryId,
+    required this.anime,
+    required this.status,
+    required this.progress,
+    required this.updatedAt,
+  });
+
+  final int entryId;
+  final Anime anime;
+
+  /// AniList `MediaListStatus`, e.g. `CURRENT`.
+  final String status;
+  final int progress;
+  final DateTime updatedAt;
 }
