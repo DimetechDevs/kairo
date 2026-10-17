@@ -36,12 +36,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _addStream() async {
-    final match = await showMatchSheet(context, title: 'Which show is the stream for?');
+    final match = await showMatchSheet(context, title: 'Which show is the link for?');
     if (match == null || !mounted) return;
     final (anime, episode) = match;
-    final stream = await showStreamUrlDialog(context, subtitle: '${anime.title} · Episode $episode');
-    if (stream == null) return;
-    ref.read(libraryProvider.notifier).addStream(anime: anime, episode: episode, url: stream.url, label: stream.label);
+    await addWatchLinkFor(context, ref, anime, episode);
   }
 
   void _snack(String text) => ScaffoldMessenger.of(context)

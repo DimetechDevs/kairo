@@ -376,7 +376,11 @@ class LibraryFile {
 
   int? get animeId => anime?.id;
   bool get isStream => uri.startsWith('http://') || uri.startsWith('https://');
-  bool get playable => state == FileState.matched && anime != null && episode != null;
+
+  /// A page on a streaming site (Crunchyroll, Bilibili, …) watched in the in-app browser,
+  /// rather than a video Kairo plays itself. Episode 0 means the show's main page.
+  bool get isWebLink => id.startsWith('web:');
+  bool get playable => state == FileState.matched && anime != null && episode != null && !isWebLink;
 
   String get sizeLabel {
     if (isStream) return Uri.tryParse(uri)?.host ?? 'Stream';

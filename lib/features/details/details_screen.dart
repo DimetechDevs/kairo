@@ -13,6 +13,7 @@ import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
+import '../watch/web_watch_screen.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key, required this.animeId});
@@ -236,7 +237,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 ),
                 if (anime.streamingLinks.isNotEmpty) ...[
                   const SizedBox(height: KairoSpacing.sm),
-                  _WhereToWatch(links: anime.streamingLinks, onOpen: _open),
+                  _WhereToWatch(links: anime.streamingLinks, onOpen: (url) => openWatchLink(context, ref, url, animeId: anime.id)),
                   const SizedBox(height: KairoSpacing.xl),
                 ],
                 if (episodeCount > 0) ...[
@@ -271,7 +272,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       progress: progress[(anime.id, ep)],
                       onAddFile: () => _addFile(anime, ep),
                       onAddStream: () => _addStream(anime, ep),
-                      onOpenOfficial: _open,
+                      onOpenOfficial: (url) => openWatchLink(context, ref, url, animeId: anime.id, episode: ep),
                     ),
                   if (episodeCount > _collapsedEpisodes)
                     Center(
@@ -303,13 +304,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
-  Future<void> _open(String url) async {
-    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open that link")));
-    }
-  }
-
   Future<void> _addFile(Anime anime, int episode) async {
     final doc = await ref.read(documentsProvider).pickVideo();
     if (doc == null) return;
@@ -317,9 +311,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   }
 
   Future<void> _addStream(Anime anime, int episode) async {
-    final stream = await showStreamUrlDialog(context, subtitle: '${anime.title} · Episode $episode');
-    if (stream == null) return;
-    ref.read(libraryProvider.notifier).addStream(anime: anime, episode: episode, url: stream.url, label: stream.label);
+    await addWatchLinkFor(context, ref, anime, episode);
   }
 
   static String _weekday(DateTime t) {
@@ -593,7 +585,7 @@ class _EpisodeRow extends StatelessWidget {
                         child: Text('Watch on ${streaming!.site ?? 'official site'}'),
                       ),
                     PopupMenuItem(value: 'file', child: Text(file == null ? 'Add video file' : 'Replace video file')),
-                    const PopupMenuItem(value: 'stream', child: Text('Add stream URL')),
+                    const PopupMenuItem(value: 'stream', child: Text('Add watch link')),
                   ],
                 ),
               ],
