@@ -51,6 +51,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   webview_flutter: ^4.14.1
   webview_flutter_android: ^4.14.1
+  audio_service: ^0.18.19
 
 dev_dependencies:
   flutter_test:

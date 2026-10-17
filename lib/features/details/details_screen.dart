@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/router.dart';
 
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -13,7 +12,7 @@ import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
-import '../watch/web_watch_screen.dart';
+import '../../playback/open.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key, required this.animeId});
@@ -62,7 +61,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     };
     final progress = ref.watch(progressProvider);
     final resumeEpisode = ref.watch(resumeListProvider).where((r) => r.$1.animeId == anime.id).firstOrNull?.$1.episode;
-    final playEpisode = resumeEpisode ?? (files.keys.where((e) => e > watched).toList()..sort()).firstOrNull;
+    final playEp = resumeEpisode ?? (files.keys.where((e) => e > watched).toList()..sort()).firstOrNull;
 
     // Watch links the user saved: per episode, and one for the whole show (episode 0).
     final links = ref.read(libraryProvider.notifier).watchLinksFor(anime.id);
@@ -168,7 +167,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: playEpisode == null && nextLink != null
+                      child: playEp == null && nextLink != null
                           ? FilledButton.icon(
                               onPressed: () =>
                                   openWatchLink(context, ref, nextLink.uri, animeId: anime.id, episode: nextEpisode),
@@ -179,12 +178,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             )
-                          : playEpisode != null
+                          : playEp != null
                           ? FilledButton.icon(
-                              onPressed: () => context.push(Routes.player(anime.id, playEpisode)),
+                              onPressed: () => playEpisode(context, ref, anime.id, playEp),
                               icon: const Icon(Icons.play_arrow_rounded),
                               label: Text(
-                                resumeEpisode != null ? 'Resume Ep $playEpisode' : 'Play Ep $playEpisode',
+                                resumeEpisode != null ? 'Resume Ep $playEp' : 'Play Ep $playEp',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -477,7 +476,7 @@ class _StatusButton extends StatelessWidget {
   }
 }
 
-class _EpisodeRow extends StatelessWidget {
+class _EpisodeRow extends ConsumerWidget {
   const _EpisodeRow({
     required this.anime,
     required this.episode,
@@ -509,7 +508,7 @@ class _EpisodeRow extends StatelessWidget {
   final ValueChanged<String> onOpenOfficial;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = progress;
     final (label, color) = switch ((watched, aired)) {
       _ when file != null && p != null && !p.finished => (
@@ -536,7 +535,7 @@ class _EpisodeRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: file != null
-              ? () => context.push(Routes.player(anime.id, episode))
+              ? () => playEpisode(context, ref, anime.id, episode)
               : webLink != null
               ? () => onOpenOfficial(webLink!.uri)
               : null,

@@ -12,7 +12,7 @@ import '../../data/watch_links.dart';
 import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
-import '../watch/web_watch_screen.dart';
+import '../../playback/open.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -390,7 +390,7 @@ class _FileRow extends ConsumerWidget {
                       animeId: anime.id,
                       episode: file.episode == 0 ? null : file.episode,
                     )
-                  : () => context.push(Routes.player(anime.id, file.episode!)),
+                  : () => playEpisode(context, ref, anime.id, file.episode!),
               icon: const Icon(Icons.play_arrow_rounded),
             ),
           _FileMenu(file: file),

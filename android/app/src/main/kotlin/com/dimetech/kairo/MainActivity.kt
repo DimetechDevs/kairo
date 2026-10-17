@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -13,7 +13,7 @@ import io.flutter.plugin.common.MethodChannel
  * Picks videos and subtitles with the system document picker and keeps read access to them,
  * so imported files stay where they are on the phone (nothing is copied).
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : AudioServiceActivity() {
     private val channelName = "kairo/documents"
     private val pickRequest = 4710
     private var pending: MethodChannel.Result? = null
