@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
 import '../../core/theme.dart';
+import '../../playback/open.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../widgets/common.dart';
@@ -430,7 +431,7 @@ class _ResumeCard extends ConsumerWidget {
       width: 220,
       child: InkWell(
         borderRadius: BorderRadius.circular(KairoRadii.panel),
-        onTap: () => context.push(Routes.player(anime.id, progress.episode)),
+        onTap: () => playEpisode(context, ref, anime.id, progress.episode),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

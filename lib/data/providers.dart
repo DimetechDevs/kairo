@@ -7,6 +7,7 @@ import 'anilist.dart';
 import 'documents.dart';
 import 'filename_parser.dart';
 import 'local_store.dart';
+import 'watch_links.dart';
 import 'models.dart';
 
 /// Opened in `main()` before the app starts and passed in as an override.
@@ -216,6 +217,24 @@ class LibraryNotifier extends Notifier<List<LibraryFile>> {
       episode: episode,
     ));
   }
+
+  /// Saves a link to a page on a streaming site, for one episode or (episode 0) the whole show.
+  void addWatchLink({required Anime anime, required int episode, required String url, String? label}) {
+    final now = DateTime.now();
+    _put(LibraryFile(
+      id: 'web:${anime.id}:$episode:${now.microsecondsSinceEpoch}',
+      uri: url,
+      fileName: label?.trim().isNotEmpty == true ? label!.trim() : linkLabel(url),
+      state: FileState.matched,
+      addedAt: now,
+      anime: anime,
+      episode: episode,
+    ));
+  }
+
+  /// Watch links for a show, the show's own page (episode 0) first.
+  List<LibraryFile> watchLinksFor(int animeId) =>
+      state.where((f) => f.isWebLink && f.animeId == animeId).toList()..sort((a, b) => a.episode!.compareTo(b.episode!));
 
   /// Points a missing entry at a new copy of the file.
   void relink(String fileId, PickedDocument doc) {

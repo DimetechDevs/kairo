@@ -11,6 +11,8 @@ import 'data/airing_alerts.dart';
 import 'data/anilist_sync.dart';
 import 'data/local_store.dart';
 import 'data/providers.dart';
+import 'playback/notification.dart';
+import 'playback/player_host.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +36,7 @@ Future<void> main() async {
   container.read(airingAlertsProvider).sync().ignore();
   container.read(aniListSyncProvider.notifier).syncNow().ignore(); // No-op unless signed in.
 
+  await initMediaNotification(container);
   runApp(UncontrolledProviderScope(container: container, child: KairoApp(router: router)));
   if (launchRoute != null) WidgetsBinding.instance.addPostFrameCallback((_) => router.push(launchRoute));
 }
@@ -64,6 +67,8 @@ class _KairoAppState extends State<KairoApp> {
       debugShowCheckedModeBanner: false,
       theme: KairoTheme.dark(),
       routerConfig: _router,
+      // The player sits above every screen so it can shrink to a mini player and keep playing.
+      builder: (context, child) => PlayerHost(child: child!),
     );
   }
 }

@@ -176,6 +176,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: KairoSpacing.xl),
+                const _GroupLabel('Watch links'),
+                _SettingsGroup(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Open streaming links inside Kairo', style: TextStyle(fontSize: 14)),
+                      subtitle: const Text(
+                        'Off: open them in the Crunchyroll, Bilibili or YouTube app instead',
+                        style: TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                      ),
+                      value: settings.openLinksInApp,
+                      onChanged: (v) => _update((s) => s.copyWith(openLinksInApp: v)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: KairoSpacing.xl),
                 const _GroupLabel('Notifications'),
                 _SettingsGroup(
                   children: [

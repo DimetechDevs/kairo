@@ -2,17 +2,17 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../app/router.dart';
 
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../data/watch_links.dart';
 import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
+import '../../playback/open.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key, required this.animeId});
@@ -61,7 +61,17 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     };
     final progress = ref.watch(progressProvider);
     final resumeEpisode = ref.watch(resumeListProvider).where((r) => r.$1.animeId == anime.id).firstOrNull?.$1.episode;
-    final playEpisode = resumeEpisode ?? (files.keys.where((e) => e > watched).toList()..sort()).firstOrNull;
+    final playEp = resumeEpisode ?? (files.keys.where((e) => e > watched).toList()..sort()).firstOrNull;
+
+    // Watch links the user saved: per episode, and one for the whole show (episode 0).
+    final links = ref.read(libraryProvider.notifier).watchLinksFor(anime.id);
+    final episodeLinks = {
+      for (final l in links)
+        if (l.episode! > 0) l.episode!: l,
+    };
+    final showLink = links.where((l) => l.episode == 0).firstOrNull;
+    final nextEpisode = watched + 1;
+    final nextLink = episodeLinks[nextEpisode] ?? showLink;
 
     return Scaffold(
       body: CustomScrollView(
@@ -157,12 +167,23 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: playEpisode != null
+                      child: playEp == null && nextLink != null
                           ? FilledButton.icon(
-                              onPressed: () => context.push(Routes.player(anime.id, playEpisode)),
+                              onPressed: () =>
+                                  openWatchLink(context, ref, nextLink.uri, animeId: anime.id, episode: nextEpisode),
                               icon: const Icon(Icons.play_arrow_rounded),
                               label: Text(
-                                resumeEpisode != null ? 'Resume Ep $playEpisode' : 'Play Ep $playEpisode',
+                                'Watch Ep $nextEpisode on ${linkLabel(nextLink.uri)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )
+                          : playEp != null
+                          ? FilledButton.icon(
+                              onPressed: () => playEpisode(context, ref, anime.id, playEp),
+                              icon: const Icon(Icons.play_arrow_rounded),
+                              label: Text(
+                                resumeEpisode != null ? 'Resume Ep $playEp' : 'Play Ep $playEp',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -234,9 +255,15 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     child: Text(_expanded ? 'Show less' : 'Read more'),
                   ),
                 ),
-                if (anime.streamingLinks.isNotEmpty) ...[
+                ...[
                   const SizedBox(height: KairoSpacing.sm),
-                  _WhereToWatch(links: anime.streamingLinks, onOpen: _open),
+                  _WhereToWatch(
+                    links: anime.streamingLinks,
+                    saved: links,
+                    onOpen: (url, {episode}) => openWatchLink(context, ref, url, animeId: anime.id, episode: episode),
+                    onAdd: () => addWatchLinkFor(context, ref, anime, 0),
+                    onRemove: (id) => ref.read(libraryProvider.notifier).remove(id),
+                  ),
                   const SizedBox(height: KairoSpacing.xl),
                 ],
                 if (episodeCount > 0) ...[
@@ -267,11 +294,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       onToggle: () =>
                           ref.read(watchlistProvider.notifier).setWatched(anime, ep <= watched ? ep - 1 : ep),
                       file: files[ep],
+                      webLink: episodeLinks[ep],
                       streaming: anime.streamingEpisode(ep),
                       progress: progress[(anime.id, ep)],
                       onAddFile: () => _addFile(anime, ep),
                       onAddStream: () => _addStream(anime, ep),
-                      onOpenOfficial: _open,
+                      onOpenOfficial: (url) => openWatchLink(context, ref, url, animeId: anime.id, episode: ep),
                     ),
                   if (episodeCount > _collapsedEpisodes)
                     Center(
@@ -303,13 +331,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
-  Future<void> _open(String url) async {
-    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open that link")));
-    }
-  }
-
   Future<void> _addFile(Anime anime, int episode) async {
     final doc = await ref.read(documentsProvider).pickVideo();
     if (doc == null) return;
@@ -317,9 +338,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   }
 
   Future<void> _addStream(Anime anime, int episode) async {
-    final stream = await showStreamUrlDialog(context, subtitle: '${anime.title} · Episode $episode');
-    if (stream == null) return;
-    ref.read(libraryProvider.notifier).addStream(anime: anime, episode: episode, url: stream.url, label: stream.label);
+    await addWatchLinkFor(context, ref, anime, episode);
   }
 
   static String _weekday(DateTime t) {
@@ -457,7 +476,7 @@ class _StatusButton extends StatelessWidget {
   }
 }
 
-class _EpisodeRow extends StatelessWidget {
+class _EpisodeRow extends ConsumerWidget {
   const _EpisodeRow({
     required this.anime,
     required this.episode,
@@ -468,6 +487,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.onAddStream,
     required this.onOpenOfficial,
     this.file,
+    this.webLink,
     this.streaming,
     this.progress,
   });
@@ -477,6 +497,9 @@ class _EpisodeRow extends StatelessWidget {
   final bool watched;
   final bool aired;
   final LibraryFile? file;
+
+  /// A saved link to this episode on a streaming site.
+  final LibraryFile? webLink;
   final StreamingEpisode? streaming;
   final PlaybackProgress? progress;
   final VoidCallback onToggle;
@@ -485,7 +508,7 @@ class _EpisodeRow extends StatelessWidget {
   final ValueChanged<String> onOpenOfficial;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = progress;
     final (label, color) = switch ((watched, aired)) {
       _ when file != null && p != null && !p.finished => (
@@ -494,6 +517,10 @@ class _EpisodeRow extends StatelessWidget {
       ),
       (true, _) => ('Watched', KairoColors.success),
       _ when file != null => (file!.isStream ? 'Stream ready' : 'In your library', KairoColors.success),
+      _ when webLink != null => (
+        'Watch on ${linkLabel(webLink!.uri)}',
+        serviceFor(webLink!.uri)?.color ?? KairoColors.info,
+      ),
       (false, true) => (anime.duration != null ? '${anime.duration} min' : 'Aired', KairoColors.textSecondary),
       (false, false) => ('Not aired yet', KairoColors.textMuted),
     };
@@ -507,7 +534,11 @@ class _EpisodeRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(KairoRadii.card),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: file != null ? () => context.push(Routes.player(anime.id, episode)) : null,
+          onTap: file != null
+              ? () => playEpisode(context, ref, anime.id, episode)
+              : webLink != null
+              ? () => onOpenOfficial(webLink!.uri)
+              : null,
           child: Padding(
             padding: const EdgeInsets.all(KairoSpacing.sm),
             child: Row(
@@ -532,7 +563,7 @@ class _EpisodeRow extends StatelessWidget {
                             CoverArt(anime: anime, banner: true, radius: 0),
                           ColoredBox(color: Colors.black.withValues(alpha: thumbnail != null ? 0.15 : 0.35)),
                           Center(
-                            child: file != null
+                            child: file != null || webLink != null
                                 ? const Icon(Icons.play_circle_fill_rounded, size: 28)
                                 : thumbnail == null
                                 ? Text('$episode', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))
@@ -593,7 +624,7 @@ class _EpisodeRow extends StatelessWidget {
                         child: Text('Watch on ${streaming!.site ?? 'official site'}'),
                       ),
                     PopupMenuItem(value: 'file', child: Text(file == null ? 'Add video file' : 'Replace video file')),
-                    const PopupMenuItem(value: 'stream', child: Text('Add stream URL')),
+                    const PopupMenuItem(value: 'stream', child: Text('Add watch link')),
                   ],
                 ),
               ],
@@ -605,12 +636,21 @@ class _EpisodeRow extends StatelessWidget {
   }
 }
 
-/// Official streaming services from AniList, opened in their own apps.
+/// Official services from AniList plus the links the user saved, with a button to add one.
 class _WhereToWatch extends StatelessWidget {
-  const _WhereToWatch({required this.links, required this.onOpen});
+  const _WhereToWatch({
+    required this.links,
+    required this.saved,
+    required this.onOpen,
+    required this.onAdd,
+    required this.onRemove,
+  });
 
   final List<ExternalLink> links;
-  final ValueChanged<String> onOpen;
+  final List<LibraryFile> saved;
+  final void Function(String url, {int? episode}) onOpen;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -629,9 +669,32 @@ class _WhereToWatch extends StatelessWidget {
                 backgroundColor: KairoColors.surface,
                 side: BorderSide(color: (l.color ?? KairoColors.outline).withValues(alpha: 0.7)),
                 shape: const StadiumBorder(),
-                avatar: Icon(Icons.open_in_new_rounded, size: 16, color: l.color ?? KairoColors.primarySoft),
+                avatar: Icon(Icons.play_circle_outline_rounded, size: 16, color: l.color ?? KairoColors.primarySoft),
                 label: Text(l.language == null ? l.site : '${l.site} · ${l.language}'),
               ),
+            for (final s in saved)
+              InputChip(
+                onPressed: () => onOpen(s.uri, episode: s.episode == 0 ? null : s.episode),
+                onDeleted: () => onRemove(s.id),
+                deleteButtonTooltipMessage: 'Remove link',
+                backgroundColor: KairoColors.surfaceRaised,
+                side: BorderSide(color: (serviceFor(s.uri)?.color ?? KairoColors.primarySoft).withValues(alpha: 0.7)),
+                shape: const StadiumBorder(),
+                avatar: Icon(
+                  Icons.bookmark_rounded,
+                  size: 16,
+                  color: serviceFor(s.uri)?.color ?? KairoColors.primarySoft,
+                ),
+                label: Text(s.episode == 0 ? s.fileName : '${s.fileName} · Ep ${s.episode}'),
+              ),
+            ActionChip(
+              onPressed: onAdd,
+              backgroundColor: Colors.transparent,
+              side: const BorderSide(color: KairoColors.outline),
+              shape: const StadiumBorder(),
+              avatar: const Icon(Icons.add_link_rounded, size: 16, color: KairoColors.info),
+              label: const Text('Add a link'),
+            ),
           ],
         ),
       ],

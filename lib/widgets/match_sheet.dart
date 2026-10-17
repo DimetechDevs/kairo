@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
+import '../data/watch_links.dart';
 import 'common.dart';
 import 'cover_art.dart';
 
@@ -212,56 +214,112 @@ class _MatchSheetState extends ConsumerState<_MatchSheet> {
   }
 }
 
-/// Asks for a stream URL the user controls (their own server, a direct HLS/MP4 link).
-Future<({String url, String label})?> showStreamUrlDialog(BuildContext context, {required String subtitle}) {
+/// Asks for a link to watch an episode: a page on a streaming site (Crunchyroll, Bilibili, YouTube…,
+/// opened in the built-in browser) or a direct video/stream URL (played in Kairo's player).
+Future<({String url, String label, bool direct})?> showWatchLinkDialog(BuildContext context, {required String subtitle}) {
   final url = TextEditingController();
   final label = TextEditingController();
   String? error;
-  return showDialog<({String url, String label})>(
+  return showDialog<({String url, String label, bool direct})>(
     context: context,
     builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        backgroundColor: KairoColors.surface,
-        title: const Text('Add a stream URL'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(subtitle, style: const TextStyle(color: KairoColors.textSecondary, fontSize: 13)),
-              const SizedBox(height: KairoSpacing.md),
-              TextField(
-                controller: url,
-                autofocus: true,
-                keyboardType: TextInputType.url,
-                decoration: InputDecoration(labelText: 'https://…', errorText: error),
-              ),
-              const SizedBox(height: KairoSpacing.sm),
-              TextField(controller: label, decoration: const InputDecoration(labelText: 'Name (optional)')),
-              const SizedBox(height: KairoSpacing.md),
-              const Text(
-                'Use links from your own media server (Jellyfin, Plex, a NAS) or another source you have the rights to. '
-                'Direct MP4, MKV and HLS (.m3u8) links work.',
-                style: TextStyle(color: KairoColors.textMuted, fontSize: 12),
-              ),
-            ],
+      builder: (context, setState) {
+        final parsed = parseWatchLink(url.text);
+        final direct = parsed != null && isDirectMediaLink(parsed.toString());
+        final service = parsed == null ? null : serviceFor(parsed.toString());
+        return AlertDialog(
+          backgroundColor: KairoColors.surface,
+          title: const Text('Add a watch link'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(subtitle, style: const TextStyle(color: KairoColors.textSecondary, fontSize: 13)),
+                const SizedBox(height: KairoSpacing.md),
+                TextField(
+                  controller: url,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  onChanged: (_) => setState(() => error = null),
+                  decoration: InputDecoration(
+                    labelText: 'Paste a link',
+                    hintText: 'https://www.crunchyroll.com/watch/…',
+                    errorText: error,
+                    suffixIcon: IconButton(
+                      tooltip: 'Paste',
+                      icon: const Icon(Icons.content_paste_rounded),
+                      onPressed: () async {
+                        final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                        if (clip?.text != null) setState(() => url.text = clip!.text!);
+                      },
+                    ),
+                  ),
+                ),
+                if (parsed != null) ...[
+                  const SizedBox(height: KairoSpacing.sm),
+                  Row(
+                    children: [
+                      Icon(
+                        direct ? Icons.play_circle_outline_rounded : Icons.public_rounded,
+                        size: 16,
+                        color: service?.color ?? KairoColors.primarySoft,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          direct
+                              ? 'Direct video: plays in Kairo\'s player'
+                              : service?.blocksInAppPlayback == true
+                                  ? '${service!.name}: opens in the ${service.name} app'
+                                  : '${linkLabel(parsed.toString())}: opens inside Kairo',
+                          style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: KairoSpacing.sm),
+                TextField(controller: label, decoration: const InputDecoration(labelText: 'Name (optional)')),
+                const SizedBox(height: KairoSpacing.md),
+                const Text(
+                  'Works with Crunchyroll, Bilibili, YouTube, HIDIVE and other sites, '
+                  'or a direct MP4/MKV/HLS link from your own server.',
+                  style: TextStyle(color: KairoColors.textMuted, fontSize: 12),
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final parsed = Uri.tryParse(url.text.trim());
-              if (parsed == null || !(parsed.scheme == 'http' || parsed.scheme == 'https') || parsed.host.isEmpty) {
-                setState(() => error = 'Enter a full http(s) link');
-                return;
-              }
-              Navigator.pop(context, (url: url.text.trim(), label: label.text.trim()));
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (parsed == null) {
+                  setState(() => error = 'That doesn\'t look like a link');
+                  return;
+                }
+                Navigator.pop(context, (url: parsed.toString(), label: label.text.trim(), direct: direct));
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
     ),
   );
+}
+
+/// Asks for a link and saves it for [episode] of [anime] (0 = the show's own page).
+Future<void> addWatchLinkFor(BuildContext context, WidgetRef ref, Anime anime, int episode) async {
+  final link = await showWatchLinkDialog(
+    context,
+    subtitle: episode == 0 ? '${anime.title} · whole show' : '${anime.title} · Episode $episode',
+  );
+  if (link == null) return;
+  final library = ref.read(libraryProvider.notifier);
+  if (link.direct) {
+    library.addStream(anime: anime, episode: episode == 0 ? 1 : episode, url: link.url, label: link.label);
+  } else {
+    library.addWatchLink(anime: anime, episode: episode, url: link.url, label: link.label);
+  }
 }

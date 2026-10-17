@@ -6,7 +6,6 @@ import '../features/discover/discover_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/my_anime/my_anime_screen.dart';
-import '../features/player/player_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'shell.dart';
 
@@ -18,7 +17,6 @@ abstract final class Routes {
   static const profile = '/profile';
 
   static String anime(int id) => '/anime/$id';
-  static String player(int animeId, int episode) => '/player/$animeId/$episode';
 }
 
 GoRouter createRouter() {
@@ -38,19 +36,11 @@ GoRouter createRouter() {
           StatefulShellBranch(routes: [GoRoute(path: Routes.profile, builder: (_, _) => const ProfileScreen())]),
         ],
       ),
-      // Details and the player open above the tab bar, as separate routes.
+      // Details opens above the tab bar. The player lives above everything (PlayerHost), not as a route.
       GoRoute(
         parentNavigatorKey: rootKey,
         path: '/anime/:id',
         builder: (_, state) => DetailsScreen(animeId: int.parse(state.pathParameters['id']!)),
-      ),
-      GoRoute(
-        parentNavigatorKey: rootKey,
-        path: '/player/:animeId/:episode',
-        builder: (_, state) => PlayerScreen(
-          animeId: int.parse(state.pathParameters['animeId']!),
-          episode: int.parse(state.pathParameters['episode']!),
-        ),
       ),
     ],
   );
