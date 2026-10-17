@@ -13,7 +13,7 @@ import 'providers.dart';
 
 /// The AniList API client registered for Kairo (anilist.co/settings/developer, redirect `kairo://auth`).
 /// Public by design: the implicit grant used here has no client secret.
-const aniListClientId = String.fromEnvironment('ANILIST_CLIENT_ID', defaultValue: '');
+const aniListClientId = String.fromEnvironment('ANILIST_CLIENT_ID', defaultValue: '54043');
 
 const _statusToAniList = {
   ListStatus.watching: 'CURRENT',
