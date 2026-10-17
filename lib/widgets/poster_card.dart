@@ -15,6 +15,28 @@ class PosterCard extends StatelessWidget {
   final double? width;
   final bool showMeta;
 
+  static const titleStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.3);
+  static const metaStyle = TextStyle(fontSize: 11, color: KairoColors.textSecondary);
+
+  /// Height of the text under the poster (two title lines, plus the meta line) as it will
+  /// actually render: measured with the real font and the user's text size, not estimated.
+  static double textHeight(BuildContext context, {bool withMeta = true}) {
+    final base = DefaultTextStyle.of(context).style;
+    final scaler = MediaQuery.textScalerOf(context);
+    double measure(TextStyle style, int lines) {
+      final painter = TextPainter(
+        text: TextSpan(text: List.filled(lines, 'Ag').join('\n'), style: base.merge(style)),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    return measure(titleStyle, 2) + (withMeta ? measure(metaStyle, 1) : 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -75,14 +97,14 @@ class PosterCard extends StatelessWidget {
               anime.shortTitle,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.3),
+              style: titleStyle,
             ),
             if (showMeta)
               Text(
                 [if (anime.year != null) '${anime.year}', anime.episodesLabel].join(' · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: KairoColors.textSecondary),
+                style: metaStyle,
               ),
           ],
         ),
