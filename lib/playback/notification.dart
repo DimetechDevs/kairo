@@ -39,36 +39,27 @@ class KairoMediaHandler extends BaseAudioHandler with SeekHandler {
       artUri: cover == null ? null : Uri.parse(cover),
     ));
 
-    if (session.kind == PlaybackKind.native) {
-      final player = _controller.player;
-      void update() => _publish(
-            playing: player.state.playing,
-            buffering: player.state.buffering,
-            position: player.state.position,
-            duration: player.state.duration,
-            seekable: true,
-          );
-      _subscriptions.addAll([
-        player.stream.playing.listen((_) => update()),
-        player.stream.buffering.listen((_) => update()),
-        player.stream.duration.listen((d) {
-          final item = mediaItem.value;
-          if (item != null && item.duration != d) mediaItem.add(item.copyWith(duration: d));
-          update();
-        }),
-        // Position is extrapolated by Android between updates, so every few seconds is enough.
-        Stream.periodic(const Duration(seconds: 5)).listen((_) => update()),
-      ]);
-      update();
-    } else {
-      void update() => _publish(playing: _controller.webPlaying.value, seekable: false);
-      _controller.webPlaying.addListener(update);
-      _removeWebListener = () => _controller.webPlaying.removeListener(update);
-      update();
-    }
+    final player = _controller.player;
+    void update() => _publish(
+          playing: player.state.playing,
+          buffering: player.state.buffering,
+          position: player.state.position,
+          duration: player.state.duration,
+          seekable: true,
+        );
+    _subscriptions.addAll([
+      player.stream.playing.listen((_) => update()),
+      player.stream.buffering.listen((_) => update()),
+      player.stream.duration.listen((d) {
+        final item = mediaItem.value;
+        if (item != null && item.duration != d) mediaItem.add(item.copyWith(duration: d));
+        update();
+      }),
+      // Position is extrapolated by Android between updates, so every few seconds is enough.
+      Stream.periodic(const Duration(seconds: 5)).listen((_) => update()),
+    ]);
+    update();
   }
-
-  void Function()? _removeWebListener;
 
   void _publish({
     required bool playing,
@@ -97,8 +88,6 @@ class KairoMediaHandler extends BaseAudioHandler with SeekHandler {
       s.cancel();
     }
     _subscriptions.clear();
-    _removeWebListener?.call();
-    _removeWebListener = null;
     playbackState.add(PlaybackState(processingState: AudioProcessingState.idle, playing: false));
     mediaItem.add(null);
   }
@@ -117,7 +106,7 @@ class KairoMediaHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> seek(Duration position) async {
-    if (_container.read(playbackProvider)?.kind == PlaybackKind.native) await _controller.player.seek(position);
+    if (_container.read(playbackProvider) != null) await _controller.player.seek(position);
   }
 
   @override

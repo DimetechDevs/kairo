@@ -1,17 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/theme.dart';
-import '../data/providers.dart';
 import '../data/settings.dart';
-import '../data/watch_links.dart';
 import '../widgets/common.dart';
 import 'playback_controller.dart';
 
@@ -48,7 +43,7 @@ class _PlayerHostState extends ConsumerState<PlayerHost> with WidgetsBindingObse
     super.dispose();
   }
 
-  /// Back in the full-screen player: close a sheet, go back in the web page, else shrink to the mini player.
+  /// Back in the full-screen player: close a sheet, else shrink to the mini player.
   @override
   Future<bool> didPopRoute() async {
     final session = ref.read(playbackProvider);
@@ -58,13 +53,7 @@ class _PlayerHostState extends ConsumerState<PlayerHost> with WidgetsBindingObse
       nav.pop();
       return true;
     }
-    final controller = ref.read(playbackProvider.notifier);
-    final web = controller.web;
-    if (session.kind == PlaybackKind.web && web != null && await web.canGoBack()) {
-      await web.goBack();
-      return true;
-    }
-    controller.minimize();
+    ref.read(playbackProvider.notifier).minimize();
     return true;
   }
 
@@ -114,7 +103,6 @@ class _PlayerFrame extends ConsumerWidget {
   final GlobalKey<NavigatorState> navigatorKey;
 
   static const _miniHeight = 64.0;
-  static const _webBarHeight = 56.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -130,11 +118,8 @@ class _PlayerFrame extends ConsumerWidget {
 
     // The video is always laid out at its full-screen size and scaled into the mini player,
     // so switching modes never reloads it.
-    final webTop = media.padding.top + _webBarHeight;
-    final surfaceSize = session.kind == PlaybackKind.web ? Size(size.width, size.height - webTop) : size;
-    final surfaceRect = expanded
-        ? (session.kind == PlaybackKind.web ? Rect.fromLTWH(0, webTop, surfaceSize.width, surfaceSize.height) : Offset.zero & size)
-        : const Rect.fromLTWH(0, 0, _miniHeight * 16 / 9, _miniHeight);
+    final surfaceSize = size;
+    final surfaceRect = expanded ? Offset.zero & size : const Rect.fromLTWH(0, 0, _miniHeight * 16 / 9, _miniHeight);
 
     return AnimatedPositioned.fromRect(
       rect: frame,
@@ -169,9 +154,7 @@ class _PlayerFrame extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        if (s.expanded && s.kind == PlaybackKind.native) const Positioned.fill(child: _NativeControls()),
-                        if (s.expanded && s.kind == PlaybackKind.web)
-                          Positioned(left: 0, right: 0, top: 0, height: webTop, child: _WebBar(session: s)),
+                        if (s.expanded) const Positioned.fill(child: _NativeControls()),
                         if (!s.expanded)
                           Positioned(
                             left: _miniHeight * 16 / 9,
@@ -202,22 +185,15 @@ class _PlayerFrame extends ConsumerWidget {
   }
 }
 
-/// The video itself: Kairo's player, or the web page.
+/// The video itself.
 class _Surface extends ConsumerWidget {
   const _Surface({required this.session});
 
   final PlaybackSession session;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(playbackProvider.notifier);
-    return switch (session.kind) {
-      PlaybackKind.native => Video(controller: controller.video, controls: NoVideoControls, fill: Colors.black),
-      PlaybackKind.web => controller.web == null
-          ? const ColoredBox(color: KairoColors.background)
-          : WebViewWidget(key: ValueKey(session.uri), controller: controller.web!),
-    };
-  }
+  Widget build(BuildContext context, WidgetRef ref) =>
+      Video(controller: ref.read(playbackProvider.notifier).video, controls: NoVideoControls, fill: Colors.black);
 }
 
 /// The mini player's title and buttons.
@@ -229,16 +205,11 @@ class _MiniBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(playbackProvider.notifier);
-    final playing = session.kind == PlaybackKind.native
-        ? StreamBuilder(
-            stream: controller.player.stream.playing,
-            initialData: controller.player.state.playing,
-            builder: (_, snap) => _playPause(controller, snap.data ?? false),
-          )
-        : ValueListenableBuilder(
-            valueListenable: controller.webPlaying,
-            builder: (_, playing, _) => _playPause(controller, playing),
-          );
+    final playing = StreamBuilder(
+      stream: controller.player.stream.playing,
+      initialData: controller.player.state.playing,
+      builder: (_, snap) => _playPause(controller, snap.data ?? false),
+    );
 
     return InkWell(
       onTap: controller.expand,
@@ -277,101 +248,6 @@ class _MiniBar extends ConsumerWidget {
         onPressed: controller.playPause,
         icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
       );
-}
-
-/// Top bar over a web page in full-screen mode.
-class _WebBar extends ConsumerWidget {
-  const _WebBar({required this.session});
-
-  final PlaybackSession session;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(playbackProvider.notifier);
-    final service = serviceFor(session.uri);
-    final episode = session.episode;
-    final watched = session.anime == null ? 0 : ref.watch(watchlistProvider)[session.anime!.id]?.watched ?? 0;
-
-    return Material(
-      color: KairoColors.background,
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Minimize',
-              onPressed: controller.minimize,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    session.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(color: service?.color ?? KairoColors.textMuted, shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          session.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            if (episode != null && session.anime != null)
-              IconButton(
-                tooltip: episode <= watched ? 'Episode $episode watched' : 'Mark episode $episode watched',
-                onPressed: episode <= watched ? null : controller.markWatched,
-                icon: Icon(
-                  episode <= watched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded,
-                  color: episode <= watched ? KairoColors.success : KairoColors.text,
-                ),
-              ),
-            IconButton(
-              tooltip: 'Rotate',
-              onPressed: () => controller.rotate(MediaQuery.orientationOf(context)),
-              icon: const Icon(Icons.screen_rotation_rounded),
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'More',
-              color: KairoColors.surfaceRaised,
-              onSelected: (v) async {
-                final web = controller.web;
-                if (v == 'reload') await web?.reload();
-                if (v == 'outside') {
-                  final url = await web?.currentUrl() ?? session.uri;
-                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                  await controller.close();
-                }
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'reload', child: Text('Reload')),
-                PopupMenuItem(value: 'outside', child: Text('Open in ${service?.name ?? 'browser'} app')),
-              ],
-            ),
-            IconButton(tooltip: 'Close player', onPressed: controller.close, icon: const Icon(Icons.close_rounded)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Kairo's own player controls: tap to show, double-tap a side to seek, tracks, speed, rotate.
@@ -461,20 +337,10 @@ class _NativeControlsState extends ConsumerState<_NativeControls> {
         options: [
           for (final t in tracks)
             if (t.id != 'auto') (t, t.id == 'no' ? 'Off' : _trackLabel(t.id, t.title, t.language), t == current),
-          ('file', 'Load a subtitle file (.srt, .ass, .vtt)…', false),
         ],
       ),
     );
-    if (choice is SubtitleTrack) {
-      await _player.setSubtitleTrack(choice);
-    } else if (choice == 'file') {
-      final docs = ref.read(documentsProvider);
-      final doc = await docs.pickSubtitle();
-      if (doc == null) return;
-      final bytes = await docs.readBytes(doc.uri);
-      if (bytes == null) return;
-      await _player.setSubtitleTrack(SubtitleTrack.data(utf8.decode(bytes, allowMalformed: true), title: doc.name));
-    }
+    if (choice is SubtitleTrack) await _player.setSubtitleTrack(choice);
   }
 
   Future<void> _chooseAudio() async {
@@ -505,7 +371,7 @@ class _NativeControlsState extends ConsumerState<_NativeControls> {
     final settings = ref.watch(settingsProvider);
     final position = _dragging != null ? _duration * _dragging! : _position;
     final fraction = _duration.inMilliseconds == 0 ? 0.0 : position.inMilliseconds / _duration.inMilliseconds;
-    final hasNext = _controller.nextFile != null;
+    final hasNext = _controller.hasNext;
     final rate = _player.state.rate;
 
     return Stack(

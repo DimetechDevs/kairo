@@ -87,7 +87,7 @@ class LocalNotificationsScheduler implements AlertScheduler {
         // Inexact is fine for "it's out" and needs no exact-alarm permission.
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         title: a.title,
-        body: 'Episode ${a.episode} just aired. Tap to see where to watch it.',
+        body: 'Episode ${a.episode} just aired. Tap to watch it.',
         payload: a.route,
       );
     }

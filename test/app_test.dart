@@ -12,18 +12,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support.dart';
 
 void main() {
-  testWidgets('Home shows AniList titles and the five tabs', (tester) async {
+  testWidgets('Home shows AniList titles and the four tabs', (tester) async {
     await pumpApp(tester);
 
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text('Popular this season'), findsOneWidget);
-    for (final tab in ['Home', 'Discover', 'My Anime', 'Library', 'Profile']) {
+    for (final tab in ['Home', 'Discover', 'My Anime', 'Profile']) {
       expect(find.widgetWithText(NavigationDestination, tab), findsOneWidget);
     }
-
-    await tester.tap(find.widgetWithText(NavigationDestination, 'Library'));
-    await tester.pumpAndSettle();
-    expect(find.text('No videos yet'), findsOneWidget);
+    expect(find.widgetWithText(NavigationDestination, 'Library'), findsNothing, reason: 'imports are gone');
     await unmount(tester);
   });
 
@@ -59,7 +56,10 @@ void main() {
     expect(find.text('Madhouse'), findsOneWidget);
     expect(find.text('A long story.\nSecond line & more.'), findsOneWidget);
 
-    await tester.tap(find.text('Add to list'));
+    expect(find.text('Play Ep 1'), findsOneWidget, reason: 'every aired episode plays from the API');
+    await tester.tap(find.text('Status'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ListStatus.planned.label).last);
     await tester.pumpAndSettle();
     expect(container.read(watchlistProvider)[1]?.status, ListStatus.planned);
 

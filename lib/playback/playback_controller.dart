@@ -5,29 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 
-import '../core/theme.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
 import '../data/settings.dart';
-import '../data/watch_links.dart';
-
-enum PlaybackKind {
-  /// Kairo's own player (media_kit): imported files and direct streams.
-  native,
-
-  /// A streaming site's page in the built-in browser.
-  web,
-}
+import '../data/stream_api.dart';
 
 /// What's playing now. The player lives above every screen, so it keeps playing while the user
 /// browses (mini player) and only stops when they close it.
 class PlaybackSession {
   const PlaybackSession({
-    required this.kind,
     required this.uri,
     required this.title,
     required this.subtitle,
@@ -37,7 +24,7 @@ class PlaybackSession {
     this.error,
   });
 
-  final PlaybackKind kind;
+  /// The stream being played, as the Kairo API gave it.
   final String uri;
   final String title;
   final String subtitle;
@@ -51,7 +38,6 @@ class PlaybackSession {
   final String? error;
 
   PlaybackSession copyWith({bool? expanded, String? error, String? title}) => PlaybackSession(
-        kind: kind,
         uri: uri,
         title: title ?? this.title,
         subtitle: subtitle,
@@ -67,13 +53,9 @@ class PlaybackController extends Notifier<PlaybackSession?> {
 
   Player? _player;
   VideoController? _video;
-  WebViewController? _web;
   final _subscriptions = <StreamSubscription<Object?>>[];
   Timer? _saveTimer;
   bool _countedWatched = false;
-
-  /// Whether the web page's video is playing, as reported by the page (best effort).
-  final webPlaying = ValueNotifier<bool>(false);
 
   /// Set when the user locks the orientation with the rotate button; null = follow the phone.
   final lockedOrientation = ValueNotifier<Orientation?>(null);
@@ -92,19 +74,27 @@ class PlaybackController extends Notifier<PlaybackSession?> {
 
   Player get player => _player ??= Player();
   VideoController get video => _video ??= VideoController(player);
-  WebViewController? get web => _web;
 
   // ---- Opening ----
 
-  /// Plays an imported file or stream for an episode. Returns false if there's nothing to play.
-  Future<bool> playEpisode(int animeId, int episode) async {
-    final file = ref.read(libraryProvider.notifier).fileFor(animeId, episode);
-    if (file == null) return false;
+  /// Plays an episode from the Kairo API. Returns why it couldn't, or null once it's playing.
+  Future<String?> playEpisode(int animeId, int episode) async {
+    final StreamApiClient? api;
+    final EpisodeStreams? streams;
+    try {
+      api = await ref.read(streamApiProvider.future);
+      if (api == null) return 'Set up your Kairo API in Profile to play episodes.';
+      streams = await api.episode(animeId, episode);
+    } on StreamApiException catch (e) {
+      return e.message;
+    }
+    if (streams == null) return "Episode $episode isn't available yet.";
+
     await _end();
-    final anime = ref.read(animeProvider(animeId)) ?? file.anime;
+    final anime = ref.read(animeProvider(animeId));
+    final source = streams.best;
     state = PlaybackSession(
-      kind: PlaybackKind.native,
-      uri: file.uri,
+      uri: source.url,
       title: anime?.shortTitle ?? 'Episode $episode',
       subtitle: 'Episode $episode',
       anime: anime,
@@ -127,122 +117,45 @@ class PlaybackController extends Notifier<PlaybackSession?> {
     final saved = ref.read(progressProvider)[(animeId, episode)];
     final resumeAt = saved != null && !saved.finished && saved.position > const Duration(seconds: 30) ? saved.position : null;
     await _applySettings();
-    await player.open(Media(file.uri, start: resumeAt));
-    return true;
+    await player.open(Media(source.url, httpHeaders: source.headers, start: resumeAt));
+    await _addSubtitles(streams.subtitles);
+    return null;
   }
 
-  /// Opens a streaming site's page in the built-in browser.
-  Future<void> openWeb(String url, {int? animeId, int? episode}) async {
-    await _end();
-    final anime = animeId == null ? null : ref.read(animeProvider(animeId));
-    final ep = episode == 0 ? null : episode;
-    state = PlaybackSession(
-      kind: PlaybackKind.web,
-      uri: url,
-      title: anime?.shortTitle ?? linkLabel(url),
-      subtitle: [linkLabel(url), if (ep != null) 'Episode $ep'].join(' · '),
-      anime: anime,
-      episode: ep,
-    );
-    _enterFullscreenMode();
-    _web = _createWebView(url);
-  }
-
-  WebViewController _createWebView(String url) {
-    final web = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(KairoColors.background)
-      ..addJavaScriptChannel('KairoMedia', onMessageReceived: (m) => webPlaying.value = m.message == 'playing')
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (_) async {
-          // Report play/pause of the page's videos, so the notification shows the right button.
-          await _web?.runJavaScript(_hookVideosJs);
-          final title = await _web?.getTitle();
-          if (title != null && title.isNotEmpty && state?.anime == null) state = state?.copyWith(title: title);
-        },
-        onNavigationRequest: (r) {
-          final uri = Uri.tryParse(r.url);
-          if (uri != null && !{'http', 'https', 'about', 'blob', 'data'}.contains(uri.scheme)) {
-            launchUrl(uri, mode: LaunchMode.externalApplication).ignore();
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        },
-      ));
-    if (web.platform case final AndroidWebViewController android) {
-      android.setMediaPlaybackRequiresUserGesture(false);
-      // Allow DRM-protected video (Crunchyroll and others); nothing else (no camera or microphone).
-      android.setOnPlatformPermissionRequest((request) {
-        final onlyDrm = request.types.every((t) => t == AndroidWebViewPermissionResourceType.protectedMediaId);
-        onlyDrm ? request.grant() : request.deny();
-      });
-      final cookies = WebViewCookieManager();
-      if (cookies.platform case final AndroidWebViewCookieManager androidCookies) {
-        androidCookies.setAcceptThirdPartyCookies(android, true);
-      }
+  /// Adds the API's subtitle files; the one in the preferred language is switched on.
+  Future<void> _addSubtitles(List<SubtitleSource> subtitles) async {
+    if (subtitles.isEmpty || player.platform is! NativePlayer) return;
+    final native = player.platform! as NativePlayer;
+    final want = ref.read(settingsProvider).subtitleLanguage;
+    var chosen = false;
+    for (final sub in subtitles) {
+      final pick = !chosen && want != 'off' && sub.language.toLowerCase().startsWith(want);
+      chosen |= pick;
+      await native.command(['sub-add', sub.url, pick ? 'select' : 'auto', sub.label ?? sub.language, sub.language]);
     }
-    web.loadRequest(Uri.parse(url));
-    return web;
   }
-
-  static const _hookVideosJs = '''
-    (function () {
-      if (window.__kairoHooked) return;
-      window.__kairoHooked = true;
-      function hook(v) {
-        if (v.__kairo) return;
-        v.__kairo = true;
-        v.addEventListener('play', function () { KairoMedia.postMessage('playing'); });
-        v.addEventListener('pause', function () { KairoMedia.postMessage('paused'); });
-        if (!v.paused) KairoMedia.postMessage('playing');
-      }
-      setInterval(function () { document.querySelectorAll('video').forEach(hook); }, 1000);
-    })();
-  ''';
 
   // ---- Controls (also used by the notification) ----
 
   Future<void> playPause() async {
-    switch (state?.kind) {
-      case PlaybackKind.native:
-        await player.playOrPause();
-      case PlaybackKind.web:
-        await _web?.runJavaScript(
-          "document.querySelectorAll('video').forEach(function (v) { v.paused ? v.play() : v.pause(); });",
-        );
-      case null:
-        break;
-    }
+    if (state != null) await player.playOrPause();
   }
 
   Future<void> pause() async {
-    if (state?.kind == PlaybackKind.native) {
-      await player.pause();
-    } else {
-      await _web?.runJavaScript("document.querySelectorAll('video').forEach(function (v) { v.pause(); });");
-    }
+    if (state != null) await player.pause();
   }
 
   Future<void> play() async {
-    if (state?.kind == PlaybackKind.native) {
-      await player.play();
-    } else {
-      await _web?.runJavaScript("document.querySelectorAll('video').forEach(function (v) { v.play(); });");
-    }
+    if (state != null) await player.play();
   }
 
   Future<void> seekBy(Duration offset) async {
-    if (state?.kind == PlaybackKind.native) {
-      final duration = player.state.duration;
-      var next = player.state.position + offset;
-      if (next < Duration.zero) next = Duration.zero;
-      if (duration > Duration.zero && next > duration) next = duration;
-      await player.seek(next);
-    } else {
-      await _web?.runJavaScript(
-        "document.querySelectorAll('video').forEach(function (v) { v.currentTime += ${offset.inSeconds}; });",
-      );
-    }
+    if (state == null) return;
+    final duration = player.state.duration;
+    var next = player.state.position + offset;
+    if (next < Duration.zero) next = Duration.zero;
+    if (duration > Duration.zero && next > duration) next = duration;
+    await player.seek(next);
   }
 
   void minimize() {
@@ -273,25 +186,24 @@ class PlaybackController extends Notifier<PlaybackSession?> {
         : [DeviceOrientation.portraitUp]);
   }
 
-  LibraryFile? get nextFile {
+  /// Whether there's a later episode to go to (one that has aired, when AniList knows).
+  bool get hasNext {
     final s = state;
-    if (s == null || s.kind != PlaybackKind.native || s.anime == null || s.episode == null) return null;
-    return ref.read(libraryProvider.notifier).fileFor(s.anime!.id, s.episode! + 1);
+    if (s?.anime == null || s?.episode == null) return false;
+    final aired = s!.anime!.airedEpisodes;
+    return aired == 0 || s.episode! < aired;
   }
 
   Future<void> playNext() async {
     final s = state;
-    if (s?.anime == null || nextFile == null) return;
+    if (s?.anime == null || !hasNext) return;
     final expanded = s!.expanded;
-    await playEpisode(s.anime!.id, s.episode! + 1);
-    if (!expanded) minimize();
-  }
-
-  /// Marks the current episode watched (the ✓ button on web pages).
-  void markWatched() {
-    final s = state;
-    if (s?.anime == null || s?.episode == null) return;
-    ref.read(watchlistProvider.notifier).setWatched(s!.anime!, s.episode!);
+    final error = await playEpisode(s.anime!.id, s.episode! + 1);
+    if (error != null) {
+      state = state?.copyWith(error: error);
+    } else if (!expanded) {
+      minimize();
+    }
   }
 
   // ---- Internals ----
@@ -303,14 +215,7 @@ class PlaybackController extends Notifier<PlaybackSession?> {
       await s.cancel();
     }
     _subscriptions.clear();
-    if (state?.kind == PlaybackKind.native) await _player?.stop();
-    if (_web != null) {
-      // A WebView keeps playing after its widget is gone, so stop the page explicitly.
-      await _web!.runJavaScript("document.querySelectorAll('video,audio').forEach(function (m) { m.pause(); });").catchError((_) {});
-      await _web!.loadRequest(Uri.parse('about:blank')).catchError((_) {});
-      _web = null;
-    }
-    webPlaying.value = false;
+    await _player?.stop();
     lockedOrientation.value = null;
   }
 
@@ -353,7 +258,7 @@ class PlaybackController extends Notifier<PlaybackSession?> {
 
   void _saveProgress() {
     final s = state;
-    if (s == null || s.kind != PlaybackKind.native || s.anime == null || s.episode == null || _player == null) return;
+    if (s == null || s.anime == null || s.episode == null || _player == null) return;
     final position = player.state.position;
     final duration = player.state.duration;
     if (duration <= Duration.zero) return;
@@ -369,7 +274,7 @@ class PlaybackController extends Notifier<PlaybackSession?> {
 
   void _onCompleted() {
     _saveProgress();
-    if (ref.read(settingsProvider).autoNext && nextFile != null) playNext();
+    if (ref.read(settingsProvider).autoNext && hasNext) playNext();
   }
 }
 

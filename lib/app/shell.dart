@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../playback/playback_controller.dart';
 import '../playback/player_host.dart';
 
-/// The five-tab scaffold. Each tab keeps its own navigation stack and scroll position.
+/// The four-tab scaffold. Each tab keeps its own navigation stack and scroll position.
 class KairoShell extends ConsumerWidget {
   const KairoShell({super.key, required this.shell});
 
@@ -30,7 +30,6 @@ class KairoShell extends ConsumerWidget {
           NavigationDestination(icon: Icon(Icons.explore_outlined), selectedIcon: Icon(Icons.explore), label: 'Discover'),
           NavigationDestination(
               icon: Icon(Icons.bookmark_border_rounded), selectedIcon: Icon(Icons.bookmark_rounded), label: 'My Anime'),
-          NavigationDestination(icon: Icon(Icons.folder_outlined), selectedIcon: Icon(Icons.folder_rounded), label: 'Library'),
           NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
         ],
       ),

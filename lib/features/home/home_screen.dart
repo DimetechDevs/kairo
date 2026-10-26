@@ -25,7 +25,11 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feed = ref.watch(homeFeedProvider);
-    final resume = ref.watch(resumeListProvider);
+    // Episodes stopped part-way, for shows Kairo still has a saved copy of.
+    final resume = [
+      for (final p in ref.watch(resumeListProvider))
+        if (ref.watch(animeProvider(p.animeId)) case final anime?) (p, anime),
+    ];
     final resuming = {for (final (p, _) in resume) p.animeId};
     final watching = ref
         .watch(sortedWatchlistProvider)
@@ -88,7 +92,7 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: KairoSpacing.xs),
               HorizontalStrip(
                 children: [
-                  for (final (p, f) in resume) _ResumeCard(progress: p, file: f),
+                  for (final (p, anime) in resume) _ResumeCard(progress: p, anime: anime),
                   for (final e in watching) _ContinueCard(entry: e),
                 ],
               ),
@@ -424,14 +428,13 @@ double _heroHeight(BuildContext context) => 150 + MediaQuery.textScalerOf(contex
 
 /// An episode stopped part-way; tapping it resumes playback.
 class _ResumeCard extends ConsumerWidget {
-  const _ResumeCard({required this.progress, required this.file});
+  const _ResumeCard({required this.progress, required this.anime});
 
   final PlaybackProgress progress;
-  final LibraryFile file;
+  final Anime anime;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final anime = ref.watch(animeProvider(progress.animeId)) ?? file.anime!;
     final minutesLeft = (progress.remaining.inSeconds / 60).ceil();
     return SizedBox(
       width: 220,
