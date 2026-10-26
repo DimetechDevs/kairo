@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -256,23 +258,50 @@ class Skeleton extends StatefulWidget {
 }
 
 class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-    ..repeat(reverse: true);
+  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+
+  /// Fast loads finish before this, so they never flash a skeleton.
+  static const _showAfter = Duration(milliseconds: 300);
+  late final Timer _delay;
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _delay = Timer(_showAfter, () => setState(() => _visible = true));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // No pulse when the phone's animations are turned off.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pulse.value = 1;
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
+    _delay.cancel();
     _pulse.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
-      child: Container(
-        width: widget.width,
-        height: widget.height,
-        decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(widget.radius)),
+    // Takes its full size from the start so nothing moves when it appears.
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: const Duration(milliseconds: 150),
+      child: FadeTransition(
+        opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
+        child: Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(widget.radius)),
+        ),
       ),
     );
   }

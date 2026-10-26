@@ -139,4 +139,18 @@ void main() {
     expect(seasonOf(DateTime(2026, 12, 5)), (season: 'WINTER', year: 2027));
     expect(seasonOf(DateTime(2026, 10, 16)), (season: 'FALL', year: 2026));
   });
+
+  testWidgets('skeletons wait 300ms before showing and hold still with animations off', (tester) async {
+    double opacity() => tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
+    await tester.pumpWidget(const MediaQuery(
+      data: MediaQueryData(disableAnimations: true),
+      child: Skeleton(width: 40, height: 10),
+    ));
+    expect(opacity(), 0, reason: 'a fast load never flashes a skeleton');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(opacity(), 1);
+    expect(tester.hasRunningAnimations, isTrue, reason: 'only the 150ms fade-in runs');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.hasRunningAnimations, isFalse, reason: 'no pulse with animations off');
+  });
 }
