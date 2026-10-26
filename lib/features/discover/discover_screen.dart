@@ -410,7 +410,7 @@ class _FilterSheetState extends State<_FilterSheet> {
         const SizedBox(height: KairoSpacing.sm),
         Wrap(
           spacing: KairoSpacing.sm,
-          runSpacing: KairoSpacing.sm,
+          runSpacing: 0, // Each pill already carries 6 above and below for its tap area.
           children: [
             FilterPill(label: 'Any', selected: value == null, onTap: () => onChanged(null)),
             for (final o in options.entries)

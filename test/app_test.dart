@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kairo/data/anilist.dart';
 import 'package:kairo/data/models.dart';
 import 'package:kairo/data/providers.dart';
+import 'package:kairo/widgets/common.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support.dart';
@@ -31,6 +32,8 @@ void main() {
     await tester.tap(find.widgetWithText(NavigationDestination, 'Discover'));
     await tester.pumpAndSettle();
     expect(find.text('Solo Leveling'), findsOneWidget);
+    expect(tester.getSize(find.widgetWithText(FilterPill, 'Fantasy')).height, greaterThanOrEqualTo(48),
+        reason: 'genre pills meet the 48dp tap target');
     // Unused filters must be left out: AniList treats null as a filter and returns nothing.
     expect(fake.requests.last.values, isNot(contains(null)));
     expect(fake.requests.last.containsKey('status'), isFalse);

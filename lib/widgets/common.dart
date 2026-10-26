@@ -162,39 +162,49 @@ class FilterPill extends StatelessWidget {
     return Semantics(
       selected: selected,
       button: true,
-      child: Material(
-        color: selected ? selectedColor : Colors.transparent,
-        shape: StadiumBorder(side: BorderSide(color: selected ? selectedColor : KairoColors.outline)),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 36),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      // The pill is drawn 36 high; the padding stretches its tap area to Android's 48.
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: _pill()),
+      ),
+    );
+  }
+
+  Widget _pill() {
+    return Material(
+      color: selected ? selectedColor : Colors.transparent,
+      shape: StadiumBorder(side: BorderSide(color: selected ? selectedColor : KairoColors.outline)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 36),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? selectedTextColor : KairoColors.text,
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 6),
                   Text(
-                    label,
+                    trailing!,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? selectedTextColor : KairoColors.text,
+                      color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8),
                     ),
                   ),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      trailing!,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
         ),
