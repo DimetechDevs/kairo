@@ -29,16 +29,3 @@ void removeFromListWithUndo(BuildContext context, WidgetRef ref, Anime anime) {
   if (entry == null) return;
   showUndoSnack(context, 'Removed ${anime.title} from your list', onUndo: () => notifier.restore(entry));
 }
-
-/// Removes a library file or saved link with an Undo option.
-void removeFileWithUndo(BuildContext context, WidgetRef ref, String fileId) {
-  final notifier = ref.read(libraryProvider.notifier);
-  final file = notifier.remove(fileId);
-  if (file == null) return;
-  showUndoSnack(
-    context,
-    file.isStream ? 'Link removed' : 'Removed ${file.fileName}',
-    onUndo: () => notifier.restore(file),
-    onExpired: () => notifier.release(file),
-  );
-}

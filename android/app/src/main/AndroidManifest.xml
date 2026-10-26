@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Needed for the AniList catalogue and cover art. -->
+    <!-- Needed for the catalogue, cover art and streams from the Kairo API. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- New-episode alerts: show notifications and re-schedule them after a reboot. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -41,18 +41,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Receives the AniList sign-in redirect (kairo://auth). -->
-        <activity
-            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
-            android:exported="true"
-            android:taskAffinity="">
-            <intent-filter android:label="flutter_web_auth_2">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="kairo" />
-            </intent-filter>
-        </activity>
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
             <intent-filter>

@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:kairo/data/anilist.dart';
 import 'package:kairo/data/local_store.dart';
 import 'package:kairo/data/providers.dart';
+import 'package:kairo/data/stream_api.dart';
 import 'package:kairo/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -110,6 +111,7 @@ Future<(ProviderContainer, FakeAniList)> pumpApp(
     prefsProvider.overrideWithValue(sp),
     aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
     localStoreProvider.overrideWithValue(store ?? MemoryStore()),
+    secretStoreProvider.overrideWithValue(MemorySecretStore()),
   ]);
   addTearDown(container.dispose);
   await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const KairoApp()));

@@ -1,165 +1,140 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kairo/data/anilist.dart';
-import 'package:kairo/data/documents.dart';
-import 'package:kairo/data/filename_parser.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:kairo/data/local_store.dart';
 import 'package:kairo/data/models.dart';
 import 'package:kairo/data/providers.dart';
+import 'package:kairo/data/stream_api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support.dart';
 
-class FakeDocuments extends Documents {
-  FakeDocuments({this.missing = const {}});
+/// Answers like the Kairo API for Frieren (AniList 1) episodes 1–3, and records each request.
+class FakeStreamApi {
+  final requests = <http.Request>[];
+  int status = 200;
 
-  final Set<String> missing;
-  final released = <String>[];
-
-  @override
-  Future<bool> exists(String uri) async => !missing.contains(uri);
-
-  @override
-  Future<void> release(String uri) async => released.add(uri);
-}
-
-Future<ProviderContainer> _container({LocalStore? store, Documents? documents}) async {
-  SharedPreferences.setMockInitialValues({});
-  final sp = await SharedPreferences.getInstance();
-  final fake = FakeAniList();
-  final container = ProviderContainer(overrides: [
-    prefsProvider.overrideWithValue(sp),
-    aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
-    localStoreProvider.overrideWithValue(store ?? MemoryStore()),
-    documentsProvider.overrideWithValue(documents ?? FakeDocuments()),
-  ]);
-  addTearDown(container.dispose);
-  return container;
+  late final client = MockClient((req) async {
+    requests.add(req);
+    if (status != 200) return http.Response('', status);
+    final m = RegExp(r'/anime/(\d+)/episodes/(\d+)$').firstMatch(req.url.path);
+    if (m == null || m.group(1) != '1' || int.parse(m.group(2)!) > 3) return http.Response('', 404);
+    return http.Response(
+      jsonEncode({
+        'sources': [
+          {'url': 'https://cdn.example/ep${m.group(2)}/720.m3u8', 'quality': '720p'},
+          {'url': 'https://cdn.example/ep${m.group(2)}/1080.m3u8', 'quality': '1080p', 'headers': {'Referer': 'https://example'}},
+        ],
+        'subtitles': [
+          {'url': 'https://cdn.example/en.vtt', 'language': 'en', 'label': 'English'},
+        ],
+      }),
+      200,
+    );
+  });
 }
 
 void main() {
-  group('parseVideoName', () {
-    test('release-group style names', () {
-      final r = parseVideoName('[SubsPlease] Sousou no Frieren - 03 (1080p) [ABCD1234].mkv');
-      expect(r.title, 'Sousou no Frieren');
-      expect(r.episode, 3);
+  group('stream API', () {
+    test('asks for an episode by AniList ID with the key, and reads sources and subtitles', () async {
+      final fake = FakeStreamApi();
+      final api = StreamApiClient(baseUrl: 'https://api.example/v1/', apiKey: 'secret', httpClient: fake.client);
+
+      final streams = await api.episode(1, 2);
+      expect(fake.requests.single.url.toString(), 'https://api.example/v1/anime/1/episodes/2');
+      expect(fake.requests.single.headers['Authorization'], 'Bearer secret');
+      expect(streams!.best.url, 'https://cdn.example/ep2/1080.m3u8', reason: 'highest quality first');
+      expect(streams.best.headers, {'Referer': 'https://example'});
+      expect(streams.subtitles.single.language, 'en');
     });
 
-    test('SxxEyy and Ep styles', () {
-      expect(parseVideoName('Solo.Leveling.S01E07.1080p.WEB-DL.mkv'), (title: 'Solo Leveling', episode: 7));
-      expect(parseVideoName('dandadan_ep08.mp4'), (title: 'dandadan', episode: 8));
-      expect(parseVideoName('Frieren Episode 12.mp4'), (title: 'Frieren', episode: 12));
+    test('a missing episode is null, and errors say what went wrong', () async {
+      final fake = FakeStreamApi();
+      final api = StreamApiClient(baseUrl: 'https://api.example', httpClient: fake.client);
+      expect(await api.episode(1, 9), isNull);
+      expect(fake.requests.single.headers.containsKey('Authorization'), isFalse, reason: 'no key, no header');
+
+      fake.status = 401;
+      await expectLater(
+        api.episode(1, 1),
+        throwsA(isA<StreamApiException>().having((e) => e.message, 'message', contains('key'))),
+      );
     });
 
-    test('ignores years and resolutions', () {
-      final r = parseVideoName('Your Name (2016) 1080p.mkv');
-      expect(r.episode, isNull);
-      expect(r.title, 'Your Name');
+    test('adaptive streams rank above fixed qualities', () {
+      final streams = EpisodeStreams.fromJson({
+        'sources': [
+          {'url': 'a', 'quality': '1080p'},
+          {'url': 'b', 'quality': 'auto'},
+        ],
+      });
+      expect(streams.best.url, 'b');
+    });
+
+    test('the address is saved in preferences and the key in secure storage', () async {
+      SharedPreferences.setMockInitialValues({});
+      final sp = await SharedPreferences.getInstance();
+      final secrets = MemorySecretStore();
+      final c = ProviderContainer(overrides: [
+        prefsProvider.overrideWithValue(sp),
+        secretStoreProvider.overrideWithValue(secrets),
+      ]);
+      addTearDown(c.dispose);
+
+      expect(await c.read(streamApiProvider.future), isNull, reason: 'nothing set up yet');
+      await c.read(streamApiConfigProvider.notifier).save(baseUrl: ' https://api.example ', apiKey: 'secret');
+      expect(sp.getString('streamApi.url'), 'https://api.example');
+      expect(sp.getKeys().any((k) => sp.get(k) == 'secret'), isFalse, reason: 'the key never goes in preferences');
+      expect(secrets.values.values, ['secret']);
+      expect((await c.read(streamApiProvider.future))!.baseUrl, 'https://api.example');
     });
   });
 
-  test('importing files suggests the show and episode from AniList', () async {
-    final c = await _container();
-    final library = c.read(libraryProvider.notifier);
-
-    await library.importPicked(const [
-      PickedDocument(uri: 'content://a/1', name: '[Group] Frieren - 02 (1080p).mkv', size: 1 << 30),
-      PickedDocument(uri: 'content://a/2', name: '[Group] Frieren - 03 (1080p).mkv'),
+  test('progress is kept per episode and the resume list shows the latest unfinished one per show', () async {
+    SharedPreferences.setMockInitialValues({});
+    final sp = await SharedPreferences.getInstance();
+    final c = ProviderContainer(overrides: [
+      prefsProvider.overrideWithValue(sp),
+      localStoreProvider.overrideWithValue(MemoryStore()),
     ]);
+    addTearDown(c.dispose);
 
-    final files = c.read(libraryProvider);
-    expect(files, hasLength(2));
-    expect(files.first.state, FileState.unmatched);
-    expect(files.first.suggestedAnime?.title, 'Frieren');
-    expect(files.first.suggestedEpisode, 2);
-    expect(files.first.sizeLabel, '1.0 GB');
-
-    library.confirmSuggestedMatch('content://a/1');
-    expect(library.fileFor(1, 2)?.uri, 'content://a/1');
-    expect(library.fileFor(1, 3), isNull, reason: 'still waiting for confirmation');
+    final progress = c.read(progressProvider.notifier);
+    progress.save(1, 1, const Duration(minutes: 23), const Duration(minutes: 24)); // Finished.
+    progress.save(1, 2, const Duration(minutes: 5), const Duration(minutes: 24));
+    expect([for (final p in c.read(resumeListProvider)) (p.animeId, p.episode)], [(1, 2)]);
   });
 
-  test('stream URLs play like files and resume where they stopped', () async {
-    final store = MemoryStore();
-    final c = await _container(store: store);
-    final frierenAnime = Anime.fromAniList(frieren);
-
-    c.read(libraryProvider.notifier).addStream(anime: frierenAnime, episode: 4, url: ' https://jellyfin.local/ep4.m3u8 ');
-    final file = c.read(libraryProvider.notifier).fileFor(1, 4)!;
-    expect(file.isStream, isTrue);
-    expect(file.uri, 'https://jellyfin.local/ep4.m3u8');
-
-    c.read(progressProvider.notifier).save(1, 4, const Duration(minutes: 10), const Duration(minutes: 24));
-    expect(c.read(resumeListProvider).single.$1.episode, 4);
-    expect(store.progress.single.position, const Duration(minutes: 10), reason: 'saved to the store');
-
-    // Watched past 90%: no longer offered for resuming.
-    c.read(progressProvider.notifier).save(1, 4, const Duration(minutes: 23), const Duration(minutes: 24));
-    expect(c.read(resumeListProvider), isEmpty);
-  });
-
-  test('files that disappear are marked missing and can be relinked', () async {
-    final frierenAnime = Anime.fromAniList(frieren);
-    final store = MemoryStore(files: [
-      LibraryFile(
-        id: 'content://old',
-        uri: 'content://old',
-        fileName: 'ep1.mkv',
-        state: FileState.matched,
-        addedAt: DateTime(2026),
-        anime: frierenAnime,
-        episode: 1,
+  testWidgets('details offers to resume and plays episodes from the API, not from imports', (tester) async {
+    final store = MemoryStore(progress: [
+      PlaybackProgress(
+        animeId: 1,
+        episode: 2,
+        position: const Duration(minutes: 5),
+        duration: const Duration(minutes: 24),
+        updatedAt: DateTime(2026),
       ),
     ]);
-    final docs = FakeDocuments(missing: {'content://old'});
-    final c = await _container(store: store, documents: docs);
-    final library = c.read(libraryProvider.notifier);
-
-    await library.checkMissing();
-    expect(c.read(libraryProvider).single.state, FileState.missing);
-    expect(library.fileFor(1, 1), isNull);
-
-    library.relink('content://old', const PickedDocument(uri: 'content://new', name: 'ep1-moved.mkv'));
-    expect(library.fileFor(1, 1)?.uri, 'content://new');
-    expect(docs.released, ['content://old']);
-  });
-
-  testWidgets('details lists official places to watch and plays an imported episode', (tester) async {
-    final frierenAnime = Anime.fromAniList(frieren);
-    SharedPreferences.setMockInitialValues({});
-    final store = MemoryStore(
-      files: [
-        LibraryFile(
-          id: 'f',
-          uri: 'content://f',
-          fileName: 'ep2.mkv',
-          state: FileState.matched,
-          addedAt: DateTime(2026),
-          anime: frierenAnime,
-          episode: 2,
-        ),
-      ],
-      progress: [
-        PlaybackProgress(
-          animeId: 1,
-          episode: 2,
-          position: const Duration(minutes: 5),
-          duration: const Duration(minutes: 24),
-          updatedAt: DateTime(2026),
-        ),
-      ],
-    );
-    await pumpApp(tester, store: store);
+    final (c, _) = await pumpApp(tester, store: store);
+    c.read(watchlistProvider.notifier).setStatus(Anime.fromAniList(frieren), ListStatus.watching);
+    await tester.pumpAndSettle();
 
     expect(find.text('Ep 2 · 19 min left'), findsOneWidget, reason: 'Continue watching shows the resume point');
-
     await tester.tap(find.text('Details').first);
     await tester.pumpAndSettle();
     expect(find.text('Resume Ep 2'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Where to watch'), 300, scrollable: find.byType(Scrollable).first);
-    expect(find.text('Crunchyroll'), findsOneWidget);
-    expect(find.text('Official Site'), findsNothing, reason: 'only streaming links are listed');
+    expect(find.text('Where to watch'), findsNothing);
+    await tester.scrollUntilVisible(find.text('19 min left'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.text('Resume Ep 2'), -300, scrollable: find.byType(Scrollable).first);
+
+    // No API set up yet: tapping play says where to set it up.
+    await tester.tap(find.text('Resume Ep 2'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Set up your Kairo API in Profile'), findsOneWidget);
     await unmount(tester);
   });
 }

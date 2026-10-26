@@ -27,7 +27,6 @@ class KairoSettings {
     this.subtitleLanguage = 'en',
     this.audioLanguage = 'ja',
     this.airingAlerts = true,
-    this.openLinksInApp = true,
   });
 
   final double speed;
@@ -47,8 +46,6 @@ class KairoSettings {
   /// Notify when a new episode of something on the Watching or Planned list airs.
   final bool airingAlerts;
 
-  /// Open streaming-site links in Kairo's built-in browser rather than the service's app.
-  final bool openLinksInApp;
 
   KairoSettings copyWith({
     double? speed,
@@ -59,7 +56,6 @@ class KairoSettings {
     String? subtitleLanguage,
     String? audioLanguage,
     bool? airingAlerts,
-    bool? openLinksInApp,
   }) =>
       KairoSettings(
         speed: speed ?? this.speed,
@@ -70,7 +66,6 @@ class KairoSettings {
         subtitleLanguage: subtitleLanguage ?? this.subtitleLanguage,
         audioLanguage: audioLanguage ?? this.audioLanguage,
         airingAlerts: airingAlerts ?? this.airingAlerts,
-        openLinksInApp: openLinksInApp ?? this.openLinksInApp,
       );
 
   Map<String, dynamic> toJson() => {
@@ -82,7 +77,6 @@ class KairoSettings {
         'subtitleLanguage': subtitleLanguage,
         'audioLanguage': audioLanguage,
         'airingAlerts': airingAlerts,
-        'openLinksInApp': openLinksInApp,
       };
 
   /// Unknown or missing keys fall back to the defaults, so older saves keep working.
@@ -97,7 +91,6 @@ class KairoSettings {
       subtitleLanguage: subtitleLanguages.containsKey(j['subtitleLanguage']) ? j['subtitleLanguage'] as String : d.subtitleLanguage,
       audioLanguage: audioLanguages.containsKey(j['audioLanguage']) ? j['audioLanguage'] as String : d.audioLanguage,
       airingAlerts: j['airingAlerts'] as bool? ?? d.airingAlerts,
-      openLinksInApp: j['openLinksInApp'] as bool? ?? d.openLinksInApp,
     );
   }
 }

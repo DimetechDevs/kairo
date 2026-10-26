@@ -97,7 +97,6 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      await tab('Library');
       await tab('Profile');
       await scrollThrough(find.byType(ListView));
 

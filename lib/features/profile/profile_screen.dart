@@ -1,13 +1,11 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../data/models.dart';
-import '../../data/anilist_sync.dart';
 import '../../data/providers.dart';
 import '../../data/settings.dart';
+import '../../data/stream_api.dart';
 import '../../widgets/common.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -61,7 +59,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final episodes = entries.fold<int>(0, (sum, e) => sum + e.watched);
     final minutes = entries.fold<int>(0, (sum, e) => sum + e.watched * (e.anime.duration ?? 24));
     final completed = entries.where((e) => e.status == ListStatus.completed).length;
-    final files = ref.watch(libraryProvider).length;
     final settings = ref.watch(settingsProvider);
 
     return SafeArea(
@@ -75,7 +72,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _AccountCard(),
+                const _ApiCard(),
                 const SizedBox(height: KairoSpacing.xl),
                 Row(
                   children: [
@@ -176,21 +173,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: KairoSpacing.xl),
-                const _GroupLabel('Watch links'),
-                _SettingsGroup(
-                  children: [
-                    SwitchListTile(
-                      title: const Text('Open streaming links inside Kairo', style: TextStyle(fontSize: 14)),
-                      subtitle: const Text(
-                        'Off: open them in the Crunchyroll, Bilibili or YouTube app instead',
-                        style: TextStyle(fontSize: 12, color: KairoColors.textSecondary),
-                      ),
-                      value: settings.openLinksInApp,
-                      onChanged: (v) => _update((s) => s.copyWith(openLinksInApp: v)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: KairoSpacing.xl),
                 const _GroupLabel('Notifications'),
                 _SettingsGroup(
                   children: [
@@ -206,26 +188,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: KairoSpacing.xl),
-                const _GroupLabel('Storage and sync'),
-                _SettingsGroup(
-                  children: [
-                    _ValueRow(
-                      label: 'Imported videos',
-                      value: '$files ${files == 1 ? 'video' : 'videos'}',
-                      onTap: () => StatefulNavigationShell.of(context).goBranch(3),
-                    ),
-                    _ValueRow(
-                      label: 'Cloud sync',
-                      value: ref.watch(aniListSyncProvider).signedIn ? 'AniList · On' : 'Off · Guest',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: KairoSpacing.xl),
-                const Text(
-                  'Anime information from AniList',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: KairoColors.textMuted),
-                ),
               ],
             ),
           ),
@@ -347,29 +309,14 @@ class _ValueRow extends StatelessWidget {
   }
 }
 
-/// Guest or signed-in AniList account, with sign-in, sync and sign-out.
-class _AccountCard extends ConsumerWidget {
-  const _AccountCard();
-
-  static String _ago(DateTime t) {
-    final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inHours < 1) return '${d.inMinutes} min ago';
-    if (d.inDays < 1) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
-  }
+/// Where Kairo gets its videos: the user's own API address and key.
+class _ApiCard extends ConsumerWidget {
+  const _ApiCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sync = ref.watch(aniListSyncProvider);
-    final notifier = ref.read(aniListSyncProvider.notifier);
-    final user = sync.user;
-    final subtitle = switch ((user, sync.syncing, sync.lastSync)) {
-      (null, _, _) => 'Your list is saved on this phone',
-      (_, true, _) => 'Syncing with AniList…',
-      (_, false, final DateTime t) => 'Synced with AniList · ${_ago(t)}',
-      _ => 'Signed in with AniList',
-    };
+    final config = ref.watch(streamApiConfigProvider).value ?? const StreamApiConfig();
+    final host = Uri.tryParse(config.baseUrl)?.host;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -383,90 +330,111 @@ class _AccountCard extends ConsumerWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              const CircleAvatar(
                 radius: 26,
                 backgroundColor: KairoColors.primary,
-                foregroundImage: user?.avatarUrl == null ? null : CachedNetworkImageProvider(user!.avatarUrl!),
-                child: Text(
-                  (user?.name ?? 'Guest').characters.first.toUpperCase(),
-                  style: const TextStyle(color: KairoColors.text, fontSize: 20, fontWeight: FontWeight.w700),
-                ),
+                child: Icon(Icons.dns_rounded, color: KairoColors.text),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text('Kairo API', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                     Text(
-                      user?.name ?? 'Guest',
+                      config.isSet ? 'Streaming from ${host?.isNotEmpty == true ? host : config.baseUrl}' : 'Not set up yet',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary),
                     ),
-                    Text(subtitle, style: const TextStyle(fontSize: 13, color: KairoColors.textSecondary)),
                   ],
                 ),
               ),
             ],
           ),
-          if (sync.error != null) ...[
-            const SizedBox(height: KairoSpacing.md),
-            Text(sync.error!, style: const TextStyle(fontSize: 13, color: KairoColors.accent)),
-          ],
           const SizedBox(height: 14),
-          if (user == null)
-            FilledButton.icon(
-              onPressed: sync.syncing ? null : notifier.signIn,
-              style: FilledButton.styleFrom(backgroundColor: KairoColors.text, foregroundColor: KairoColors.background),
-              icon: sync.syncing
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.sync_rounded),
-              label: const Text('Sign in with AniList to sync', maxLines: 1, overflow: TextOverflow.ellipsis),
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: sync.syncing ? null : notifier.syncNow,
-                    icon: const Icon(Icons.sync_rounded),
-                    label: const Text('Sync now', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-                const SizedBox(width: KairoSpacing.sm),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: sync.syncing
-                        ? null
-                        : () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                backgroundColor: KairoColors.surface,
-                                title: const Text('Sign out of AniList?'),
-                                content: const Text('Your list stays on this phone. It just stops syncing.'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Sign out'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (ok == true) await notifier.signOut();
-                          },
-                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-                    child: const Text('Sign out', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-              ],
-            ),
+          FilledButton.icon(
+            onPressed: () => showDialog<void>(context: context, builder: (_) => _ApiDialog(initial: config)),
+            icon: Icon(config.isSet ? Icons.edit_rounded : Icons.link_rounded),
+            label: Text(config.isSet ? 'Change address or key' : 'Set up your API'),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _ApiDialog extends ConsumerStatefulWidget {
+  const _ApiDialog({required this.initial});
+
+  final StreamApiConfig initial;
+
+  @override
+  ConsumerState<_ApiDialog> createState() => _ApiDialogState();
+}
+
+class _ApiDialogState extends ConsumerState<_ApiDialog> {
+  late final _url = TextEditingController(text: widget.initial.baseUrl);
+  late final _key = TextEditingController(text: widget.initial.apiKey ?? '');
+  bool _hideKey = true;
+  String? _error;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _key.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final url = _url.text.trim();
+    final uri = Uri.tryParse(url);
+    if (url.isNotEmpty && (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http') || uri.host.isEmpty)) {
+      setState(() => _error = 'Enter the full address, starting with https://');
+      return;
+    }
+    await ref.read(streamApiConfigProvider.notifier).save(baseUrl: url, apiKey: _key.text);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: KairoColors.surface,
+      title: const Text('Kairo API'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _url,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: InputDecoration(labelText: 'Address', hintText: 'https://api.example.com', errorText: _error),
+            ),
+            const SizedBox(height: KairoSpacing.md),
+            TextField(
+              controller: _key,
+              obscureText: _hideKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'Key (optional)',
+                helperText: 'Kept in the phone\'s secure storage',
+                suffixIcon: IconButton(
+                  tooltip: _hideKey ? 'Show key' : 'Hide key',
+                  onPressed: () => setState(() => _hideKey = !_hideKey),
+                  icon: Icon(_hideKey ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
     );
   }
 }

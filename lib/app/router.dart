@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../features/details/details_screen.dart';
 import '../features/discover/discover_screen.dart';
 import '../features/home/home_screen.dart';
-import '../features/library/library_screen.dart';
 import '../features/my_anime/my_anime_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'shell.dart';
@@ -13,7 +12,6 @@ abstract final class Routes {
   static const home = '/';
   static const discover = '/discover';
   static const myAnime = '/my-anime';
-  static const library = '/library';
   static const profile = '/profile';
 
   static String anime(int id) => '/anime/$id';
@@ -32,7 +30,6 @@ GoRouter createRouter() {
           StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.discover, builder: (_, _) => const DiscoverScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.myAnime, builder: (_, _) => const MyAnimeScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.library, builder: (_, _) => const LibraryScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.profile, builder: (_, _) => const ProfileScreen())]),
         ],
       ),
