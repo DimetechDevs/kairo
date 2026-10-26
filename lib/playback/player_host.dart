@@ -124,6 +124,9 @@ class _PlayerFrame extends ConsumerWidget {
     // Above the tab bar (68) on tab screens; on other screens it just sits at the bottom.
     final mini = Rect.fromLTWH(8, size.height - media.padding.bottom - 68 - 8 - _miniHeight, size.width - 16, _miniHeight);
     final frame = expanded ? Offset.zero & size : mini;
+    // Implicit animations retarget from wherever they are, so a quick tap back reverses smoothly.
+    // With the phone's animations off, the player jumps straight to its new size.
+    final move = media.disableAnimations ? Duration.zero : const Duration(milliseconds: 260);
 
     // The video is always laid out at its full-screen size and scaled into the mini player,
     // so switching modes never reloads it.
@@ -135,7 +138,7 @@ class _PlayerFrame extends ConsumerWidget {
 
     return AnimatedPositioned.fromRect(
       rect: frame,
-      duration: const Duration(milliseconds: 260),
+      duration: move,
       curve: Curves.easeOutCubic,
       child: Material(
         color: expanded ? Colors.black : KairoColors.surfaceRaised,
@@ -156,7 +159,7 @@ class _PlayerFrame extends ConsumerWidget {
                       children: [
                         AnimatedPositioned.fromRect(
                           rect: surfaceRect,
-                          duration: const Duration(milliseconds: 260),
+                          duration: move,
                           curve: Curves.easeOutCubic,
                           child: ClipRect(
                             child: FittedBox(
