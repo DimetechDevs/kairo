@@ -20,6 +20,12 @@ import 'playback_controller.dart';
 class PlayerHost extends ConsumerStatefulWidget {
   const PlayerHost({super.key, required this.child});
 
+  /// Space the mini player takes above the tab bar; tab screens end above it.
+  static const miniPlayerReserve = _PlayerFrame._miniHeight + 8;
+
+  /// How far the mini player's top sits above the bottom inset on any screen.
+  static const miniPlayerClearance = 68 + 8 + _PlayerFrame._miniHeight;
+
   final Widget child;
 
   @override

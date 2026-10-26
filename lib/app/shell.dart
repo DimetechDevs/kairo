@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../playback/playback_controller.dart';
+import '../playback/player_host.dart';
+
 /// The five-tab scaffold. Each tab keeps its own navigation stack and scroll position.
-class KairoShell extends StatelessWidget {
+class KairoShell extends ConsumerWidget {
   const KairoShell({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playing = ref.watch(playbackProvider.select((s) => s != null));
     return Scaffold(
-      body: shell,
+      // Lists end above the mini player instead of under it, so their last rows stay tappable.
+      body: AnimatedPadding(
+        duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.only(bottom: playing ? PlayerHost.miniPlayerReserve : 0),
+        child: shell,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
