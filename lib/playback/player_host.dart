@@ -62,13 +62,40 @@ class _PlayerHostState extends ConsumerState<PlayerHost> with WidgetsBindingObse
     return true;
   }
 
+  /// Whether the app's router has a screen to go back to, as it last reported.
+  bool _routerCanPop = false;
+
+  /// Tells Android whether Kairo handles the back gesture. With predictive back the system
+  /// only sends back to Kairo when it says so, and the full-screen player always wants it.
+  void _reportBack() {
+    final expanded = ref.read(playbackProvider)?.expanded ?? false;
+    NavigationNotification(canHandlePop: _routerCanPop || expanded).dispatch(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(playbackProvider);
+    ref.listen(playbackProvider.select((s) => s?.expanded ?? false), (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reportBack();
+      });
+    });
     return Stack(
       children: [
-        widget.child,
-        if (session != null) _PlayerFrame(session: session, navigatorKey: _playerNavigator),
+        NotificationListener<NavigationNotification>(
+          onNotification: (n) {
+            _routerCanPop = n.canHandlePop;
+            _reportBack();
+            return true;
+          },
+          child: widget.child,
+        ),
+        if (session != null)
+          // The player's own sheets don't decide back handling; [_reportBack] does.
+          NotificationListener<NavigationNotification>(
+            onNotification: (_) => true,
+            child: _PlayerFrame(session: session, navigatorKey: _playerNavigator),
+          ),
       ],
     );
   }
