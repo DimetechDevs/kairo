@@ -12,6 +12,7 @@ import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
+import '../../widgets/undo_snack.dart';
 import '../../playback/open.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
@@ -211,7 +212,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     _StatusButton(
                       status: entry?.status,
                       onSelected: (s) => ref.read(watchlistProvider.notifier).setStatus(anime, s),
-                      onRemove: entry == null ? null : () => ref.read(watchlistProvider.notifier).remove(anime.id),
+                      onRemove: entry == null ? null : () => removeFromListWithUndo(context, ref, anime),
                     ),
                   ],
                 ),
@@ -262,7 +263,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     saved: links,
                     onOpen: (url, {episode}) => openWatchLink(context, ref, url, animeId: anime.id, episode: episode),
                     onAdd: () => addWatchLinkFor(context, ref, anime, 0),
-                    onRemove: (id) => ref.read(libraryProvider.notifier).remove(id),
+                    onRemove: (id) => removeFileWithUndo(context, ref, id),
                   ),
                   const SizedBox(height: KairoSpacing.xl),
                 ],

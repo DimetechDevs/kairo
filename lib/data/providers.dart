@@ -62,7 +62,15 @@ class WatchlistNotifier extends Notifier<Map<int, WatchEntry>> {
     });
   }
 
-  void remove(int animeId) => _save({...state}..remove(animeId));
+  /// Removes a title and returns its entry so the caller can offer Undo.
+  WatchEntry? remove(int animeId) {
+    final entry = state[animeId];
+    if (entry != null) _save({...state}..remove(animeId));
+    return entry;
+  }
+
+  /// Puts back an entry taken out with [remove].
+  void restore(WatchEntry entry) => _save({...state, entry.animeId: entry});
 
   /// Marks the next episode watched; completes the title after the last one.
   void markNextWatched(Anime anime) {
@@ -244,12 +252,23 @@ class LibraryNotifier extends Notifier<List<LibraryFile>> {
     _put(file.copyWith(uri: doc.uri, fileName: doc.name, sizeBytes: doc.size, state: file.anime != null ? FileState.matched : FileState.unmatched));
   }
 
-  void remove(String fileId) {
+  /// Removes a file or link and returns it so the caller can offer Undo.
+  /// File access is kept until [release] is called, so [restore] still works.
+  LibraryFile? remove(String fileId) {
     final file = state.where((f) => f.id == fileId).firstOrNull;
-    if (file == null) return;
+    if (file == null) return null;
     state = [for (final f in state) if (f.id != fileId) f];
     _store.deleteFile(fileId);
-    if (!file.isStream) ref.read(documentsProvider).release(file.uri).ignore();
+    return file;
+  }
+
+  /// Puts back a file taken out with [remove].
+  void restore(LibraryFile file) => _put(file);
+
+  /// Gives up access to a removed file once Undo is no longer offered.
+  void release(LibraryFile file) {
+    if (file.isStream || state.any((f) => f.id == file.id)) return;
+    ref.read(documentsProvider).release(file.uri).ignore();
   }
 
   /// Marks files that were moved or deleted outside Kairo (and un-marks ones that came back).

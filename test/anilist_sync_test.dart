@@ -117,6 +117,21 @@ void main() {
     expect(account.list.containsKey(1), isFalse);
   });
 
+  test('undoing a removal puts the title back here and on AniList', () async {
+    final account = FakeAccount()..list[1] = ('CURRENT', 1, _secs(DateTime(2026)));
+    final c = await _signedIn(account);
+    await c.read(aniListSyncProvider.notifier).syncNow();
+
+    final removed = c.read(watchlistProvider.notifier).remove(1)!;
+    await c.read(aniListSyncProvider.notifier).flush();
+    expect(account.list.containsKey(1), isFalse);
+
+    c.read(watchlistProvider.notifier).restore(removed);
+    await c.read(aniListSyncProvider.notifier).flush();
+    expect(c.read(watchlistProvider)[1]?.watched, 1);
+    expect((account.list[1]!.$1, account.list[1]!.$2), ('CURRENT', 1));
+  });
+
   test('edits made offline are queued and sent on the next sync', () async {
     final account = FakeAccount();
     final c = await _signedIn(account);
