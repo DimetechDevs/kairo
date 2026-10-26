@@ -135,6 +135,28 @@ void main() {
     await expectLater(client.browse(search: 'x'), throwsA(isA<AniListException>()));
   });
 
+  test('home shows the saved feed at once and refreshes it in the background', () async {
+    SharedPreferences.setMockInitialValues({});
+    final sp = await SharedPreferences.getInstance();
+    final fake = FakeAniList();
+    await AniListClient(httpClient: fake.client, prefs: sp).home();
+    final before = fake.requests.length;
+
+    fake.offline = true;
+    final c = ProviderContainer(overrides: [
+      prefsProvider.overrideWithValue(sp),
+      aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
+    ]);
+    addTearDown(c.dispose);
+    final feed = await c.read(homeFeedProvider.future);
+    expect(feed.trending.map((a) => a.title), contains('Frieren'));
+
+    fake.offline = false;
+    await c.read(homeFeedProvider.notifier).revalidate();
+    expect(fake.requests.length, greaterThan(before), reason: 'a fresh copy was asked for');
+    expect(c.read(homeFeedProvider).hasValue, isTrue);
+  });
+
   test('seasons roll over in December', () {
     expect(seasonOf(DateTime(2026, 12, 5)), (season: 'WINTER', year: 2027));
     expect(seasonOf(DateTime(2026, 10, 16)), (season: 'FALL', year: 2026));

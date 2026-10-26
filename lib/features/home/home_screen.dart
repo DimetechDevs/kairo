@@ -35,7 +35,7 @@ class HomeScreen extends ConsumerWidget {
     return SafeArea(
       bottom: false,
       child: RefreshIndicator(
-        onRefresh: () => ref.refresh(homeFeedProvider.future),
+        onRefresh: () => ref.read(homeFeedProvider.notifier).revalidate(),
         child: ListView(
           padding: const EdgeInsets.only(bottom: KairoSpacing.xxl),
           children: [
