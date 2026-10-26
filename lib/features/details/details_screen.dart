@@ -562,7 +562,7 @@ class _EpisodeRow extends ConsumerWidget {
                   height: 56,
                   child: Opacity(
                     opacity: aired ? 1 : 0.4,
-                    child: ClipRRect(
+                    child: ClipRSuperellipse(
                       borderRadius: BorderRadius.circular(8),
                       child: Stack(
                         fit: StackFit.expand,

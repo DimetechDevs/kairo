@@ -26,7 +26,8 @@ class CoverArt extends StatelessWidget {
     return Semantics(
       label: '${anime.title} cover',
       image: true,
-      child: ClipRRect(
+      // Squircle-style corners, smoother than a plain rounded rectangle.
+      child: ClipRSuperellipse(
         borderRadius: BorderRadius.circular(radius),
         child: Stack(
           fit: StackFit.expand,
