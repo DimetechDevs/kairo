@@ -138,6 +138,24 @@ class AniListClient {
     }
   }
 
+  /// The last saved answer for [cacheKey], if any.
+  Map<String, dynamic>? _cached(String cacheKey) {
+    final raw = prefs?.getString('$_cachePrefix$cacheKey');
+    return raw == null ? null : jsonDecode(raw) as Map<String, dynamic>;
+  }
+
+  /// The Home feed as last saved, to show while a fresh one loads.
+  HomeFeed? cachedHome() {
+    final data = _cached('home');
+    return data == null ? null : _homeFrom(data);
+  }
+
+  /// A title's details as last saved, to show while fresh ones load.
+  Anime? cachedDetails(int id) {
+    final media = _cached('media:$id')?['Media'] as Map<String, dynamic>?;
+    return media == null ? null : Anime.fromAniList(media);
+  }
+
   static List<Anime> _media(Map<String, dynamic>? page) =>
       [for (final m in page?['media'] as List? ?? const []) Anime.fromAniList(m as Map<String, dynamic>)];
 
@@ -158,13 +176,15 @@ class AniListClient {
       {'season': s.season, 'year': s.year},
       cacheKey: 'home',
     );
-    return HomeFeed(
-      trending: _media(data['trending'] as Map<String, dynamic>?),
-      season: _media(data['season'] as Map<String, dynamic>?),
-      popular: _media(data['popular'] as Map<String, dynamic>?),
-      topRated: _media(data['topRated'] as Map<String, dynamic>?),
-    );
+    return _homeFrom(data);
   }
+
+  static HomeFeed _homeFrom(Map<String, dynamic> data) => HomeFeed(
+        trending: _media(data['trending'] as Map<String, dynamic>?),
+        season: _media(data['season'] as Map<String, dynamic>?),
+        popular: _media(data['popular'] as Map<String, dynamic>?),
+        topRated: _media(data['topRated'] as Map<String, dynamic>?),
+      );
 
   /// One page of search or browse results. Null arguments are ignored by AniList.
   Future<ResultPage<Anime>> browse({

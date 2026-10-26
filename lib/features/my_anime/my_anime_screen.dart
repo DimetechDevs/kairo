@@ -124,7 +124,11 @@ class _ListRow extends ConsumerWidget {
                             label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: KairoColors.textSecondary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
                           ),
                         ),
                         if (anime.score != null) ...[

@@ -12,7 +12,10 @@ import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
 import '../../widgets/poster_card.dart';
+import '../../widgets/undo_snack.dart';
 import '../../playback/open.dart';
+import '../../playback/playback_controller.dart';
+import '../../playback/player_host.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key, required this.animeId});
@@ -211,7 +214,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     _StatusButton(
                       status: entry?.status,
                       onSelected: (s) => ref.read(watchlistProvider.notifier).setStatus(anime, s),
-                      onRemove: entry == null ? null : () => ref.read(watchlistProvider.notifier).remove(anime.id),
+                      onRemove: entry == null ? null : () => removeFromListWithUndo(context, ref, anime),
                     ),
                   ],
                 ),
@@ -225,7 +228,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       const SizedBox(width: KairoSpacing.md),
                       Text(
                         '$watched / ${anime.episodes ?? '?'}',
-                        style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: KairoColors.textSecondary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ],
                   ),
@@ -262,7 +269,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     saved: links,
                     onOpen: (url, {episode}) => openWatchLink(context, ref, url, animeId: anime.id, episode: episode),
                     onAdd: () => addWatchLinkFor(context, ref, anime, 0),
-                    onRemove: (id) => ref.read(libraryProvider.notifier).remove(id),
+                    onRemove: (id) => removeFileWithUndo(context, ref, id),
                   ),
                   const SizedBox(height: KairoSpacing.xl),
                 ],
@@ -325,7 +332,14 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 child: PosterRow(title: 'You might also like', items: anime.recommendations),
               ),
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: KairoSpacing.xxl * 2)),
+          SliverToBoxAdapter(
+            // Room to scroll the last rows clear of the mini player while something plays.
+            child: SizedBox(
+              height: ref.watch(playbackProvider.select((s) => s != null))
+                  ? MediaQuery.paddingOf(context).bottom + PlayerHost.miniPlayerClearance + KairoSpacing.md
+                  : KairoSpacing.xxl * 2,
+            ),
+          ),
         ],
       ),
     );
@@ -548,7 +562,7 @@ class _EpisodeRow extends ConsumerWidget {
                   height: 56,
                   child: Opacity(
                     opacity: aired ? 1 : 0.4,
-                    child: ClipRRect(
+                    child: ClipRSuperellipse(
                       borderRadius: BorderRadius.circular(8),
                       child: Stack(
                         fit: StackFit.expand,

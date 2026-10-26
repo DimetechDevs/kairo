@@ -12,6 +12,7 @@ import '../../data/watch_links.dart';
 import '../../widgets/common.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/match_sheet.dart';
+import '../../widgets/undo_snack.dart';
 import '../../playback/open.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -418,7 +419,7 @@ class _FileMenu extends ConsumerWidget {
           case 'relink':
             await _relink(ref, file);
           case 'remove':
-            ref.read(libraryProvider.notifier).remove(file.id);
+            removeFileWithUndo(context, ref, file.id);
         }
       },
       itemBuilder: (_) => [

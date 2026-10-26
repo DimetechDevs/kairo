@@ -35,7 +35,7 @@ class HomeScreen extends ConsumerWidget {
     return SafeArea(
       bottom: false,
       child: RefreshIndicator(
-        onRefresh: () => ref.refresh(homeFeedProvider.future),
+        onRefresh: () => ref.read(homeFeedProvider.notifier).revalidate(),
         child: ListView(
           padding: const EdgeInsets.only(bottom: KairoSpacing.xxl),
           children: [
@@ -155,6 +155,8 @@ class _FeaturedCarouselState extends State<_FeaturedCarousel> {
     _auto?.cancel();
     _auto = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!mounted || !_controller.hasClients || widget.items.length < 2) return;
+      // No sliding banner when the phone's animations are off.
+      if (MediaQuery.disableAnimationsOf(context)) return;
       final next = (_index + 1) % widget.items.length;
       _controller.animateToPage(next, duration: const Duration(milliseconds: 500), curve: Curves.easeOutCubic);
     });
@@ -402,7 +404,11 @@ class _ContinueCard extends ConsumerWidget {
             ),
             Text(
               'Ep ${entry.watched} / ${total ?? '?'}',
-              style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 12,
+                color: KairoColors.textSecondary,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
             if (anime.nextAiring != null)
               Text(anime.nextAiring!.label(), style: const TextStyle(fontSize: 12, color: KairoColors.success)),

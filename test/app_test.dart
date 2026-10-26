@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kairo/data/anilist.dart';
 import 'package:kairo/data/models.dart';
 import 'package:kairo/data/providers.dart';
+import 'package:kairo/widgets/common.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support.dart';
@@ -31,6 +32,8 @@ void main() {
     await tester.tap(find.widgetWithText(NavigationDestination, 'Discover'));
     await tester.pumpAndSettle();
     expect(find.text('Solo Leveling'), findsOneWidget);
+    expect(tester.getSize(find.widgetWithText(FilterPill, 'Fantasy')).height, greaterThanOrEqualTo(48),
+        reason: 'genre pills meet the 48dp tap target');
     // Unused filters must be left out: AniList treats null as a filter and returns nothing.
     expect(fake.requests.last.values, isNot(contains(null)));
     expect(fake.requests.last.containsKey('status'), isFalse);
@@ -132,8 +135,44 @@ void main() {
     await expectLater(client.browse(search: 'x'), throwsA(isA<AniListException>()));
   });
 
+  test('home shows the saved feed at once and refreshes it in the background', () async {
+    SharedPreferences.setMockInitialValues({});
+    final sp = await SharedPreferences.getInstance();
+    final fake = FakeAniList();
+    await AniListClient(httpClient: fake.client, prefs: sp).home();
+    final before = fake.requests.length;
+
+    fake.offline = true;
+    final c = ProviderContainer(overrides: [
+      prefsProvider.overrideWithValue(sp),
+      aniListProvider.overrideWithValue(AniListClient(httpClient: fake.client, prefs: sp)),
+    ]);
+    addTearDown(c.dispose);
+    final feed = await c.read(homeFeedProvider.future);
+    expect(feed.trending.map((a) => a.title), contains('Frieren'));
+
+    fake.offline = false;
+    await c.read(homeFeedProvider.notifier).revalidate();
+    expect(fake.requests.length, greaterThan(before), reason: 'a fresh copy was asked for');
+    expect(c.read(homeFeedProvider).hasValue, isTrue);
+  });
+
   test('seasons roll over in December', () {
     expect(seasonOf(DateTime(2026, 12, 5)), (season: 'WINTER', year: 2027));
     expect(seasonOf(DateTime(2026, 10, 16)), (season: 'FALL', year: 2026));
+  });
+
+  testWidgets('skeletons wait 300ms before showing and hold still with animations off', (tester) async {
+    double opacity() => tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
+    await tester.pumpWidget(const MediaQuery(
+      data: MediaQueryData(disableAnimations: true),
+      child: Skeleton(width: 40, height: 10),
+    ));
+    expect(opacity(), 0, reason: 'a fast load never flashes a skeleton');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(opacity(), 1);
+    expect(tester.hasRunningAnimations, isTrue, reason: 'only the 150ms fade-in runs');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.hasRunningAnimations, isFalse, reason: 'no pulse with animations off');
   });
 }

@@ -20,6 +20,12 @@ import 'playback_controller.dart';
 class PlayerHost extends ConsumerStatefulWidget {
   const PlayerHost({super.key, required this.child});
 
+  /// Space the mini player takes above the tab bar; tab screens end above it.
+  static const miniPlayerReserve = _PlayerFrame._miniHeight + 8;
+
+  /// How far the mini player's top sits above the bottom inset on any screen.
+  static const miniPlayerClearance = 68 + 8 + _PlayerFrame._miniHeight;
+
   final Widget child;
 
   @override
@@ -62,13 +68,40 @@ class _PlayerHostState extends ConsumerState<PlayerHost> with WidgetsBindingObse
     return true;
   }
 
+  /// Whether the app's router has a screen to go back to, as it last reported.
+  bool _routerCanPop = false;
+
+  /// Tells Android whether Kairo handles the back gesture. With predictive back the system
+  /// only sends back to Kairo when it says so, and the full-screen player always wants it.
+  void _reportBack() {
+    final expanded = ref.read(playbackProvider)?.expanded ?? false;
+    NavigationNotification(canHandlePop: _routerCanPop || expanded).dispatch(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(playbackProvider);
+    ref.listen(playbackProvider.select((s) => s?.expanded ?? false), (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reportBack();
+      });
+    });
     return Stack(
       children: [
-        widget.child,
-        if (session != null) _PlayerFrame(session: session, navigatorKey: _playerNavigator),
+        NotificationListener<NavigationNotification>(
+          onNotification: (n) {
+            _routerCanPop = n.canHandlePop;
+            _reportBack();
+            return true;
+          },
+          child: widget.child,
+        ),
+        if (session != null)
+          // The player's own sheets don't decide back handling; [_reportBack] does.
+          NotificationListener<NavigationNotification>(
+            onNotification: (_) => true,
+            child: _PlayerFrame(session: session, navigatorKey: _playerNavigator),
+          ),
       ],
     );
   }
@@ -91,6 +124,9 @@ class _PlayerFrame extends ConsumerWidget {
     // Above the tab bar (68) on tab screens; on other screens it just sits at the bottom.
     final mini = Rect.fromLTWH(8, size.height - media.padding.bottom - 68 - 8 - _miniHeight, size.width - 16, _miniHeight);
     final frame = expanded ? Offset.zero & size : mini;
+    // Implicit animations retarget from wherever they are, so a quick tap back reverses smoothly.
+    // With the phone's animations off, the player jumps straight to its new size.
+    final move = media.disableAnimations ? Duration.zero : const Duration(milliseconds: 260);
 
     // The video is always laid out at its full-screen size and scaled into the mini player,
     // so switching modes never reloads it.
@@ -102,7 +138,7 @@ class _PlayerFrame extends ConsumerWidget {
 
     return AnimatedPositioned.fromRect(
       rect: frame,
-      duration: const Duration(milliseconds: 260),
+      duration: move,
       curve: Curves.easeOutCubic,
       child: Material(
         color: expanded ? Colors.black : KairoColors.surfaceRaised,
@@ -123,7 +159,7 @@ class _PlayerFrame extends ConsumerWidget {
                       children: [
                         AnimatedPositioned.fromRect(
                           rect: surfaceRect,
-                          duration: const Duration(milliseconds: 260),
+                          duration: move,
                           curve: Curves.easeOutCubic,
                           child: ClipRect(
                             child: FittedBox(

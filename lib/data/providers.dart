@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,11 +16,81 @@ final prefsProvider = Provider<SharedPreferences>((ref) => throw UnimplementedEr
 
 final aniListProvider = Provider<AniListClient>((ref) => AniListClient(prefs: ref.watch(prefsProvider)));
 
+/// Shows the last saved copy at once and swaps in a fresh one when it arrives
+/// (stale-while-revalidate). Without a saved copy it loads normally.
+abstract class _CachedThenFresh<T> extends AsyncNotifier<T> {
+  T? cached();
+  Future<T> fetch();
+
+  @override
+  Future<T> build() async {
+    final saved = cached();
+    if (saved == null) return fetch();
+    Future.microtask(revalidate);
+    return saved;
+  }
+
+  /// Fetches a fresh copy in the background. On failure the saved copy stays up.
+  Future<void> revalidate() async {
+    try {
+      final fresh = await fetch();
+      if (ref.mounted) state = AsyncData(fresh);
+    } catch (e, st) {
+      if (ref.mounted && !state.hasValue) state = AsyncError(e, st);
+    }
+  }
+}
+
 /// Trending, this season, popular and top rated, for the Home tab.
-final homeFeedProvider = FutureProvider<HomeFeed>((ref) => ref.watch(aniListProvider).home());
+/// Also refreshed when the app comes back to the foreground after a while.
+class HomeFeedNotifier extends _CachedThenFresh<HomeFeed> {
+  static const _staleAfter = Duration(minutes: 5);
+  DateTime _fetchedAt = DateTime.now();
+
+  @override
+  HomeFeed? cached() => ref.read(aniListProvider).cachedHome();
+
+  @override
+  Future<HomeFeed> fetch() async {
+    final feed = await ref.read(aniListProvider).home();
+    _fetchedAt = DateTime.now();
+    return feed;
+  }
+
+  @override
+  Future<HomeFeed> build() {
+    ref.watch(aniListProvider);
+    final lifecycle = AppLifecycleListener(onResume: () {
+      if (DateTime.now().difference(_fetchedAt) > _staleAfter) revalidate();
+    });
+    ref.onDispose(lifecycle.dispose);
+    return super.build();
+  }
+}
+
+final homeFeedProvider = AsyncNotifierProvider<HomeFeedNotifier, HomeFeed>(HomeFeedNotifier.new);
 
 /// Full details for one title. Kept in memory once loaded.
-final animeDetailsProvider = FutureProvider.family<Anime, int>((ref, id) => ref.watch(aniListProvider).details(id));
+class AnimeDetailsNotifier extends _CachedThenFresh<Anime> {
+  AnimeDetailsNotifier(this.id);
+
+  final int id;
+
+  @override
+  Anime? cached() => ref.read(aniListProvider).cachedDetails(id);
+
+  @override
+  Future<Anime> fetch() => ref.read(aniListProvider).details(id);
+
+  @override
+  Future<Anime> build() {
+    ref.watch(aniListProvider);
+    return super.build();
+  }
+}
+
+final animeDetailsProvider =
+    AsyncNotifierProvider.family<AnimeDetailsNotifier, Anime, int>(AnimeDetailsNotifier.new);
 
 /// The best copy of a title available right now: full details once loaded, else the copy saved in the watchlist.
 final animeProvider = Provider.family<Anime?, int>((ref, id) {
@@ -62,7 +133,15 @@ class WatchlistNotifier extends Notifier<Map<int, WatchEntry>> {
     });
   }
 
-  void remove(int animeId) => _save({...state}..remove(animeId));
+  /// Removes a title and returns its entry so the caller can offer Undo.
+  WatchEntry? remove(int animeId) {
+    final entry = state[animeId];
+    if (entry != null) _save({...state}..remove(animeId));
+    return entry;
+  }
+
+  /// Puts back an entry taken out with [remove].
+  void restore(WatchEntry entry) => _save({...state, entry.animeId: entry});
 
   /// Marks the next episode watched; completes the title after the last one.
   void markNextWatched(Anime anime) {
@@ -244,12 +323,23 @@ class LibraryNotifier extends Notifier<List<LibraryFile>> {
     _put(file.copyWith(uri: doc.uri, fileName: doc.name, sizeBytes: doc.size, state: file.anime != null ? FileState.matched : FileState.unmatched));
   }
 
-  void remove(String fileId) {
+  /// Removes a file or link and returns it so the caller can offer Undo.
+  /// File access is kept until [release] is called, so [restore] still works.
+  LibraryFile? remove(String fileId) {
     final file = state.where((f) => f.id == fileId).firstOrNull;
-    if (file == null) return;
+    if (file == null) return null;
     state = [for (final f in state) if (f.id != fileId) f];
     _store.deleteFile(fileId);
-    if (!file.isStream) ref.read(documentsProvider).release(file.uri).ignore();
+    return file;
+  }
+
+  /// Puts back a file taken out with [remove].
+  void restore(LibraryFile file) => _put(file);
+
+  /// Gives up access to a removed file once Undo is no longer offered.
+  void release(LibraryFile file) {
+    if (file.isStream || state.any((f) => f.id == file.id)) return;
+    ref.read(documentsProvider).release(file.uri).ignore();
   }
 
   /// Marks files that were moved or deleted outside Kairo (and un-marks ones that came back).

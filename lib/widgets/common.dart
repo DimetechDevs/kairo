@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -162,39 +164,49 @@ class FilterPill extends StatelessWidget {
     return Semantics(
       selected: selected,
       button: true,
-      child: Material(
-        color: selected ? selectedColor : Colors.transparent,
-        shape: StadiumBorder(side: BorderSide(color: selected ? selectedColor : KairoColors.outline)),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 36),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      // The pill is drawn 36 high; the padding stretches its tap area to Android's 48.
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: _pill()),
+      ),
+    );
+  }
+
+  Widget _pill() {
+    return Material(
+      color: selected ? selectedColor : Colors.transparent,
+      shape: StadiumBorder(side: BorderSide(color: selected ? selectedColor : KairoColors.outline)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 36),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? selectedTextColor : KairoColors.text,
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 6),
                   Text(
-                    label,
+                    trailing!,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? selectedTextColor : KairoColors.text,
+                      color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8),
                     ),
                   ),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      trailing!,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: (selected ? selectedTextColor : KairoColors.text).withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
         ),
@@ -246,23 +258,50 @@ class Skeleton extends StatefulWidget {
 }
 
 class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-    ..repeat(reverse: true);
+  late final _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+
+  /// Fast loads finish before this, so they never flash a skeleton.
+  static const _showAfter = Duration(milliseconds: 300);
+  late final Timer _delay;
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _delay = Timer(_showAfter, () => setState(() => _visible = true));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // No pulse when the phone's animations are turned off.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pulse.value = 1;
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
+    _delay.cancel();
     _pulse.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
-      child: Container(
-        width: widget.width,
-        height: widget.height,
-        decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(widget.radius)),
+    // Takes its full size from the start so nothing moves when it appears.
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: const Duration(milliseconds: 150),
+      child: FadeTransition(
+        opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
+        child: Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(color: KairoColors.surfaceRaised, borderRadius: BorderRadius.circular(widget.radius)),
+        ),
       ),
     );
   }
