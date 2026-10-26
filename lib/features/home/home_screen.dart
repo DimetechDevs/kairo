@@ -402,7 +402,11 @@ class _ContinueCard extends ConsumerWidget {
             ),
             Text(
               'Ep ${entry.watched} / ${total ?? '?'}',
-              style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 12,
+                color: KairoColors.textSecondary,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
             if (anime.nextAiring != null)
               Text(anime.nextAiring!.label(), style: const TextStyle(fontSize: 12, color: KairoColors.success)),

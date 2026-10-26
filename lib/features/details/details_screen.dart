@@ -226,7 +226,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       const SizedBox(width: KairoSpacing.md),
                       Text(
                         '$watched / ${anime.episodes ?? '?'}',
-                        style: const TextStyle(fontSize: 12, color: KairoColors.textSecondary),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: KairoColors.textSecondary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ],
                   ),
